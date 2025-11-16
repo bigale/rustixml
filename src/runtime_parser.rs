@@ -140,48 +140,149 @@ impl XmlNode {
     }
 }
 
-/// Build a simple XML tree from parse results
-/// For now, just concatenates all terminals
-/// We take the result of parser.parse() which returns Result<ParseTrees, String>
-pub fn build_xml_tree<T>(
-    grammar: &IxmlGrammar,
-    parse_result: Result<T, String>,
-) -> Result<XmlNode, String>
-where
-    T: AsRef<Vec<std::rc::Rc<earlgrey::EarleyParser>>>  // Placeholder - we'll use generic T and pass through
-{
-    let parse_trees = parse_result?;
-
+/// Build an EarleyForest configured for XML generation
+/// Returns the forest which can be used with forest.eval(&parse_trees)
+pub fn build_xml_forest(grammar: &IxmlGrammar) -> EarleyForest<'static, XmlNode> {
     // Create an EarleyForest to walk the parse tree
     let mut forest = EarleyForest::new(|_symbol, token| {
         // For terminals (leaves), just return the token text
         XmlNode::Text(token.to_string())
     });
 
-    // Register semantic actions for each rule in the grammar
+    // Register actions for all productions in the grammar
+    // Unlike traditional semantic actions, Earlgrey requires actions per production,
+    // not per nonterminal. The format is "nonterminal -> symbol1 symbol2 ..."
     for rule in &grammar.rules {
-        let rule_name = rule.name.clone();
-        // Clone rule_name for the move closure
-        let rule_name_for_closure = rule_name.clone();
-        forest.action(&rule_name, move |nodes: Vec<XmlNode>| {
-            // For now, just wrap all child nodes in an element with the rule name
+        register_rule_actions(&mut forest, &rule.name, &rule.alternatives);
+    }
+
+    forest
+}
+
+/// Helper function to register actions for all productions of a rule
+/// Production format: "nonterminal -> symbol1 symbol2 ..."
+fn register_rule_actions(
+    forest: &mut EarleyForest<'static, XmlNode>,
+    rule_name: &str,
+    alts: &Alternatives,
+) {
+    use std::collections::HashSet;
+    let mut registered = HashSet::new();
+
+    for seq in &alts.alts {
+        // Build the list of symbols for this production
+        let mut symbols = Vec::new();
+
+        for factor in &seq.factors {
+            let (_builder_placeholder, symbol_name) = get_factor_symbol(factor);
+            symbols.push(symbol_name);
+        }
+
+        // Create the production string: "rule_name -> symbol1 symbol2 ..."
+        let production = if symbols.is_empty() {
+            rule_name.to_string()
+        } else {
+            format!("{} -> {}", rule_name, symbols.join(" "))
+        };
+
+        // Register the action for this production
+        let rule_name_for_closure = rule_name.to_string();
+        forest.action(&production, move |nodes: Vec<XmlNode>| {
+            // Wrap all child nodes in an element with the rule name
             XmlNode::Element {
                 name: rule_name_for_closure.clone(),
                 children: nodes,
             }
         });
+
+        // Also register actions for any helper rules we create for repetition
+        for factor in &seq.factors {
+            register_repetition_actions(forest, factor, &mut registered);
+        }
     }
+}
 
-    // Also register actions for the helper rules we generated for repetitions
-    // These are the *_plus, *_star, *_opt rules
-    // For now, just concatenate their children
-    forest.action("greeting_star", |nodes| XmlNode::Element {
-        name: "greeting_star".to_string(),
-        children: nodes,
-    });
+/// Get the symbol name for a factor (matches the logic in ast_to_earlgrey)
+fn get_factor_symbol(factor: &Factor) -> ((), String) {
+    let base_name = match &factor.base {
+        BaseFactor::Literal { value, insertion: _ } => {
+            format!("lit_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+        }
+        BaseFactor::Nonterminal { name, mark: _ } => name.clone(),
+        _ => {
+            // TODO: Handle character classes and groups
+            "UNSUPPORTED".to_string()
+        }
+    };
 
-    // Evaluate the parse tree
-    forest.eval(&parse_trees)
+    // Handle repetition by using the helper rule name
+    match factor.repetition {
+        Repetition::None => ((), base_name),
+        Repetition::OneOrMore => ((), format!("{}_plus", base_name)),
+        Repetition::ZeroOrMore => ((), format!("{}_star", base_name)),
+        Repetition::Optional => ((), format!("{}_opt", base_name)),
+    }
+}
+
+/// Register actions for repetition helper rules
+fn register_repetition_actions(
+    forest: &mut EarleyForest<'static, XmlNode>,
+    factor: &Factor,
+    registered: &mut std::collections::HashSet<String>,
+) {
+    let base_name = match &factor.base {
+        BaseFactor::Literal { value, insertion: _ } => {
+            format!("lit_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+        }
+        BaseFactor::Nonterminal { name, mark: _ } => name.clone(),
+        _ => return,
+    };
+
+    match factor.repetition {
+        Repetition::OneOrMore => {
+            let plus_name = format!("{}_plus", base_name);
+            if !registered.contains(&plus_name) {
+                registered.insert(plus_name.clone());
+
+                // Register actions for both productions: base and recursive
+                forest.action(&format!("{} -> {}", plus_name, base_name), |nodes| {
+                    XmlNode::Element { name: "repeat".to_string(), children: nodes }
+                });
+                forest.action(&format!("{} -> {} {}", plus_name, plus_name, base_name), |nodes| {
+                    XmlNode::Element { name: "repeat".to_string(), children: nodes }
+                });
+            }
+        }
+        Repetition::ZeroOrMore => {
+            let star_name = format!("{}_star", base_name);
+            if !registered.contains(&star_name) {
+                registered.insert(star_name.clone());
+
+                // Register actions for epsilon and recursive productions
+                forest.action(&star_name, |_nodes| {
+                    XmlNode::Element { name: "repeat".to_string(), children: vec![] }
+                });
+                forest.action(&format!("{} -> {} {}", star_name, star_name, base_name), |nodes| {
+                    XmlNode::Element { name: "repeat".to_string(), children: nodes }
+                });
+            }
+        }
+        Repetition::Optional => {
+            let opt_name = format!("{}_opt", base_name);
+            if !registered.contains(&opt_name) {
+                registered.insert(opt_name.clone());
+
+                // Register actions for epsilon and base productions
+                forest.action(&opt_name, |_nodes| {
+                    XmlNode::Element { name: "optional".to_string(), children: vec![] }
+                });
+                forest.action(&format!("{} -> {}", opt_name, base_name), |nodes| {
+                    XmlNode::Element { name: "optional".to_string(), children: nodes }
+                });
+            }
+        }
+        Repetition::None => {}
+    }
 }
 
 /// Simple test to verify Earlgrey works
@@ -340,8 +441,14 @@ mod tests {
         match result {
             Ok(trees) => {
                 println!("\n=== Building XML Tree ===");
-                let xml_tree = build_xml_tree(&ast, &trees);
-                match xml_tree {
+
+                // Build the forest with semantic actions
+                let forest = build_xml_forest(&ast);
+
+                // Evaluate the parse trees to get XML
+                let xml_result = forest.eval(&trees);
+
+                match xml_result {
                     Ok(tree) => {
                         println!("XML Tree: {:#?}", tree);
                         let xml_string = tree.to_xml();
