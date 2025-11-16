@@ -261,8 +261,21 @@ fn char_terminal_name(ch: char) -> String {
     }
 }
 
+/// Helper function to parse a hex character from a string like "#9" or "#a0"
+fn parse_hex_char(s: &str) -> Option<char> {
+    if !s.starts_with('#') {
+        return None;
+    }
+    let hex_part = &s[1..];
+    if let Ok(code_point) = u32::from_str_radix(hex_part, 16) {
+        char::from_u32(code_point)
+    } else {
+        None
+    }
+}
+
 /// Parse a character class content string and return a predicate function
-/// Examples: "'a'-'z'" → matches a-z, "L" → matches Unicode Letter category
+/// Examples: "'a'-'z'" → matches a-z, "L" → matches Unicode Letter category, "#30-#39" → matches 0-9
 fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 'static> {
     // Parse the content to extract ranges and individual characters
     let mut chars = Vec::new();
@@ -273,7 +286,17 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
     let parts: Vec<&str> = content.split(',').map(|s| s.trim()).collect();
 
     for part in parts {
-        if part.contains('-') && (part.contains('\'') || part.contains('"')) {
+        if part.contains('-') && part.contains('#') {
+            // Hex character range like #30-#39
+            let range_parts: Vec<&str> = part.split('-').collect();
+            if range_parts.len() == 2 {
+                let start_char = parse_hex_char(range_parts[0].trim());
+                let end_char = parse_hex_char(range_parts[1].trim());
+                if let (Some(start), Some(end)) = (start_char, end_char) {
+                    ranges.push((start, end));
+                }
+            }
+        } else if part.contains('-') && (part.contains('\'') || part.contains('"')) {
             // Character range like 'a'-'z' or "a"-"z"
             let range_parts: Vec<&str> = part.split('-').collect();
             if range_parts.len() == 2 {
@@ -282,6 +305,11 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
                 if let (Some(start), Some(end)) = (start_char, end_char) {
                     ranges.push((start, end));
                 }
+            }
+        } else if part.starts_with('#') {
+            // Single hex character like #20
+            if let Some(ch) = parse_hex_char(part) {
+                chars.push(ch);
             }
         } else if (part.starts_with('\'') && part.ends_with('\'')) || (part.starts_with('"') && part.ends_with('"')) {
             // Single quoted character with either ' or "

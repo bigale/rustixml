@@ -14,6 +14,7 @@ lr1! {
     %token ident Token::Ident(_);
     %token string Token::String(_);
     %token charclass Token::CharClass(_);
+    %token hexchar Token::HexChar(_);
     %token colon Token::Colon;
     %token period Token::Period;
     %token semicolon Token::Semicolon;
@@ -39,6 +40,32 @@ lr1! {
     | plus tok=string {
         match tok {
             Token::String(s) => BaseFactor::insertion(s),
+            _ => unreachable!(),
+        }
+    }
+    | tok=hexchar {
+        match tok {
+            Token::HexChar(hex) => {
+                // Convert hex string to character
+                let code_point = u32::from_str_radix(&hex, 16)
+                    .expect("Hex validation should have happened in lexer");
+                let ch = char::from_u32(code_point)
+                    .expect("Invalid Unicode code point should have been caught in lexer");
+                BaseFactor::literal(ch.to_string())
+            },
+            _ => unreachable!(),
+        }
+    }
+    | plus tok=hexchar {
+        match tok {
+            Token::HexChar(hex) => {
+                // Convert hex string to character
+                let code_point = u32::from_str_radix(&hex, 16)
+                    .expect("Hex validation should have happened in lexer");
+                let ch = char::from_u32(code_point)
+                    .expect("Invalid Unicode code point should have been caught in lexer");
+                BaseFactor::insertion(ch.to_string())
+            },
             _ => unreachable!(),
         }
     }

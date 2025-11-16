@@ -7,6 +7,7 @@ pub enum Token {
     Ident(String),
     String(String),
     CharClass(String),  // Content between [ and ], e.g., "'a'-'z'" or "Ll"
+    HexChar(String),    // Hex-encoded character, e.g., "9" for #9, "a0" for #a0
     Colon,
     Period,
     Semicolon,
@@ -203,6 +204,7 @@ impl Lexer {
                 self.advance();
                 Ok(Token::Equals)
             }
+            Some('#') => self.read_hex_char(),
             Some(ch) if ch.is_alphabetic() || ch == '_' => self.read_ident(),
             Some(ch) => Err(format!("Unexpected character: {}", ch)),
             None => Err("Unexpected end of input".to_string()),
@@ -288,6 +290,41 @@ impl Lexer {
         }
 
         Err("Unterminated character class".to_string())
+    }
+
+    fn read_hex_char(&mut self) -> Result<Token, String> {
+        self.advance(); // skip '#'
+        let mut hex = String::new();
+
+        // Read hex digits (0-9, a-f, A-F)
+        while let Some(ch) = self.peek() {
+            if ch.is_ascii_hexdigit() {
+                hex.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        // Must have at least one hex digit
+        if hex.is_empty() {
+            return Err("Invalid hex character: # must be followed by hex digits".to_string());
+        }
+
+        // Validate the hex value represents a valid Unicode code point
+        match u32::from_str_radix(&hex, 16) {
+            Ok(code_point) => {
+                if code_point > 0x10FFFF {
+                    return Err(format!("Invalid hex character #{}: exceeds maximum Unicode code point", hex));
+                }
+                // Check for surrogates (0xD800-0xDFFF) and noncharacters
+                if (0xD800..=0xDFFF).contains(&code_point) {
+                    return Err(format!("Invalid hex character #{}: represents a surrogate code point", hex));
+                }
+                Ok(Token::HexChar(hex))
+            }
+            Err(_) => Err(format!("Invalid hex character #{}: value too large", hex))
+        }
     }
 }
 

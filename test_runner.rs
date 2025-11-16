@@ -27,6 +27,8 @@ fn main() {
         "mixed-quotes-mixed",   // Test charclass with mixed quotes ['a"-"z']
         "escaped-quote-double", // Test escaped double quotes: ""Hello""
         "escaped-quote-single", // Test escaped single quotes: 'Don''t'
+        "hex-simple",           // Test hex character: #9 (tab)
+        "hex-range",            // Test hex range in charclass: [#30-#39] (0-9)
     ];
 
     println!("Running iXML Conformance Tests\n");
