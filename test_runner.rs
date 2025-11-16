@@ -20,8 +20,10 @@ fn main() {
         "star-simple",      // Test * with three characters
         "optional-empty",   // Test ? with empty input
         "optional-simple",  // Test ? with one character
-        // "star-test",    // Disabled - uses character class
-        // "optional-test", // Disabled - needs debugging
+        "optional-test",    // Test ? with space (comma-separated sequence)
+        // Known issues - character classes with * or ? don't work yet:
+        // "charclass-star-simple",  // TODO: Fix charclass with *
+        // "star-test",              // TODO: Fix charclass with *
     ];
 
     println!("Running iXML Conformance Tests\n");
