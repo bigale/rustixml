@@ -87,10 +87,10 @@ pub fn run_test(test: &TestCase) -> TestOutcome {
     // Step 3: Create parser and parse input
     let parser = EarleyParser::new(grammar);
 
-    // Tokenize input by whitespace (simple tokenization for now)
-    let tokens: Vec<&str> = test.input.split_whitespace().collect();
+    // Character-level tokenization: convert each character to a string
+    let tokens: Vec<String> = test.input.chars().map(|c| c.to_string()).collect();
 
-    let parse_trees = match parser.parse(tokens.into_iter()) {
+    let parse_trees = match parser.parse(tokens.iter().map(|s| s.as_str())) {
         Ok(trees) => trees,
         Err(e) => return TestOutcome::InputParseError(format!("Parse error: {:?}", e)),
     };
@@ -145,7 +145,7 @@ mod tests {
         let test = TestCase {
             name: "manual_test".to_string(),
             grammar: r#"greeting: "hello" "world"."#.to_string(),
-            input: "hello world".to_string(),
+            input: "helloworld".to_string(),
             expected_xml: Some("<greeting>helloworld</greeting>".to_string()),
             expect_failure: false,
         };

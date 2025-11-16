@@ -13,18 +13,84 @@ use crate::ast::{IxmlGrammar, Rule, Alternatives, Sequence, Factor, BaseFactor, 
 pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> {
     let mut builder = GrammarBuilder::default();
 
-    // First pass: declare all nonterminals
-    // (Earlgrey needs to know about them before we use them)
+    // First pass: collect all unique characters from literals and define terminals
+    let mut chars_seen = std::collections::HashSet::new();
+    collect_literal_chars(grammar, &mut chars_seen);
+
+    for ch in chars_seen {
+        let term_name = char_terminal_name(ch);
+        builder = builder.terminal(&term_name, move |s: &str| {
+            s.len() == 1 && s.chars().next() == Some(ch)
+        });
+    }
+
+    // Second pass: declare all nonterminals (including multi-char literal sequences)
     for rule in &grammar.rules {
         builder = builder.nonterm(&rule.name);
     }
 
-    // Second pass: add all the rules
+    // Declare sequence nonterminals for multi-character literals
+    declare_literal_sequences(grammar, &mut builder);
+
+    // Third pass: add all the rules
     for rule in &grammar.rules {
         builder = convert_rule(builder, rule)?;
     }
 
     Ok(builder)
+}
+
+/// Collect all unique characters from literal strings in the grammar
+fn collect_literal_chars(grammar: &IxmlGrammar, chars: &mut std::collections::HashSet<char>) {
+    for rule in &grammar.rules {
+        collect_chars_from_alternatives(&rule.alternatives, chars);
+    }
+}
+
+fn collect_chars_from_alternatives(alts: &Alternatives, chars: &mut std::collections::HashSet<char>) {
+    for seq in &alts.alts {
+        for factor in &seq.factors {
+            collect_chars_from_factor(factor, chars);
+        }
+    }
+}
+
+fn collect_chars_from_factor(factor: &Factor, chars: &mut std::collections::HashSet<char>) {
+    if let BaseFactor::Literal { value, .. } = &factor.base {
+        for ch in value.chars() {
+            chars.insert(ch);
+        }
+    }
+}
+
+/// Declare all sequence nonterminals for multi-character literals
+fn declare_literal_sequences(grammar: &IxmlGrammar, builder: &mut GrammarBuilder) {
+    let mut sequences_declared = std::collections::HashSet::new();
+
+    for rule in &grammar.rules {
+        declare_sequences_from_alternatives(&rule.alternatives, builder, &mut sequences_declared);
+    }
+}
+
+fn declare_sequences_from_alternatives(alts: &Alternatives, builder: &mut GrammarBuilder, declared: &mut std::collections::HashSet<String>) {
+    for seq in &alts.alts {
+        for factor in &seq.factors {
+            declare_sequences_from_factor(factor, builder, declared);
+        }
+    }
+}
+
+fn declare_sequences_from_factor(factor: &Factor, builder: &mut GrammarBuilder, declared: &mut std::collections::HashSet<String>) {
+    if let BaseFactor::Literal { value, .. } = &factor.base {
+        if value.len() > 1 {
+            let seq_name = format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"));
+            if !declared.contains(&seq_name) {
+                let old_builder = std::mem::replace(builder, GrammarBuilder::default());
+                *builder = old_builder.nonterm(&seq_name);
+                declared.insert(seq_name);
+            }
+        }
+    }
 }
 
 /// Convert a single iXML rule to Earlgrey format
@@ -41,6 +107,23 @@ fn convert_alternatives(mut builder: GrammarBuilder, rule_name: &str, alts: &Alt
         builder = convert_sequence(builder, rule_name, seq)?;
     }
     Ok(builder)
+}
+
+/// Create a consistent terminal name for a character
+fn char_terminal_name(ch: char) -> String {
+    match ch {
+        ' ' => "char_SPACE".to_string(),
+        '\t' => "char_TAB".to_string(),
+        '\n' => "char_NEWLINE".to_string(),
+        '\r' => "char_RETURN".to_string(),
+        '"' => "char_QUOTE".to_string(),
+        '\'' => "char_APOS".to_string(),
+        '<' => "char_LT".to_string(),
+        '>' => "char_GT".to_string(),
+        '&' => "char_AMP".to_string(),
+        _ if ch.is_alphanumeric() => format!("char_{}", ch),
+        _ => format!("char_U{:04X}", ch as u32),
+    }
 }
 
 /// Convert a sequence (multiple factors in a row)
@@ -64,15 +147,28 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
     // First get the base symbol name
     let (new_builder, base_name) = match &factor.base {
         BaseFactor::Literal { value, insertion: _ } => {
-            // Create a unique terminal name for this literal
-            let term_name = format!("lit_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"));
+            // For character-level parsing, split literal into individual characters
+            if value.len() == 1 {
+                // Single character - terminal is already defined, just return the name
+                let ch = value.chars().next().unwrap();
+                let term_name = char_terminal_name(ch);
+                (builder, term_name)
+            } else {
+                // Multi-character literal - create a sequence rule
+                let seq_name = format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"));
 
-            // Define the terminal matcher
-            let val = value.clone();
-            let b = builder.terminal(&term_name, move |s: &str| s == val);
+                // Collect character terminal names
+                let char_symbols: Vec<String> = value.chars()
+                    .map(|ch| char_terminal_name(ch))
+                    .collect();
+
+                // Create a rule: seq_name := char1 char2 char3 ...
+                let b = builder.rule(&seq_name, &char_symbols.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
+                (b, seq_name)
+            }
 
             // TODO: Track insertion flag for XML generation
-            (b, term_name)
         }
         BaseFactor::Nonterminal { name, mark: _ } => {
             // Just reference the nonterminal by name
@@ -156,6 +252,9 @@ pub fn build_xml_forest(grammar: &IxmlGrammar) -> EarleyForest<'static, XmlNode>
         register_rule_actions(&mut forest, &rule.name, &rule.alternatives);
     }
 
+    // Also register actions for literal sequence nonterminals
+    register_literal_sequence_actions(&mut forest, grammar);
+
     forest
 }
 
@@ -202,11 +301,65 @@ fn register_rule_actions(
     }
 }
 
+/// Register semantic actions for literal sequence nonterminals
+/// These are the aux nonterminals created for multi-character literals like "hello"
+fn register_literal_sequence_actions(forest: &mut EarleyForest<'static, XmlNode>, grammar: &IxmlGrammar) {
+    let mut literals_seen = std::collections::HashSet::new();
+
+    // Collect all unique multi-character literals
+    for rule in &grammar.rules {
+        collect_literals_from_alternatives(&rule.alternatives, &mut literals_seen);
+    }
+
+    // Register actions for each multi-character literal sequence
+    for literal in literals_seen {
+        if literal.len() > 1 {
+            let seq_name = format!("lit_seq_{}", literal.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"));
+
+            // Build the character symbol list
+            let char_symbols: Vec<String> = literal.chars()
+                .map(|ch| char_terminal_name(ch))
+                .collect();
+
+            // Production: lit_seq_hello -> char_h char_e char_l char_l char_o
+            let production = format!("{} -> {}", seq_name, char_symbols.join(" "));
+
+            // Action: concatenate all character texts
+            forest.action(&production, |nodes: Vec<XmlNode>| {
+                let mut text = String::new();
+                for node in nodes {
+                    if let XmlNode::Text(t) = node {
+                        text.push_str(&t);
+                    }
+                }
+                XmlNode::Text(text)
+            });
+        }
+    }
+}
+
+fn collect_literals_from_alternatives(alts: &Alternatives, literals: &mut std::collections::HashSet<String>) {
+    for seq in &alts.alts {
+        for factor in &seq.factors {
+            if let BaseFactor::Literal { value, .. } = &factor.base {
+                literals.insert(value.clone());
+            }
+        }
+    }
+}
+
 /// Get the symbol name for a factor (matches the logic in ast_to_earlgrey)
 fn get_factor_symbol(factor: &Factor) -> ((), String) {
     let base_name = match &factor.base {
         BaseFactor::Literal { value, insertion: _ } => {
-            format!("lit_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+            if value.len() == 1 {
+                // Single character - use char terminal name
+                let ch = value.chars().next().unwrap();
+                char_terminal_name(ch)
+            } else {
+                // Multi-character literal - use sequence name
+                format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+            }
         }
         BaseFactor::Nonterminal { name, mark: _ } => name.clone(),
         _ => {
@@ -363,12 +516,13 @@ mod tests {
         // Create parser
         let parser = EarleyParser::new(grammar);
 
-        // Parse "hello" "world"
-        let input = vec!["hello", "world"];
-        let result = parser.parse(input.into_iter());
+        // Parse "helloworld" character-by-character
+        let input_str = "helloworld";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
 
-        println!("Parse result for 'hello world': {:?}", result);
-        assert!(result.is_ok(), "Failed to parse 'hello world'");
+        println!("Parse result for 'helloworld': {:?}", result);
+        assert!(result.is_ok(), "Failed to parse 'helloworld'");
     }
 
     #[test]
@@ -409,8 +563,9 @@ mod tests {
         let grammar = builder.into_grammar("greeting").expect("Failed to build grammar");
         let parser = EarleyParser::new(grammar);
 
-        let input = vec!["hello"];
-        let result = parser.parse(input.into_iter());
+        let input_str = "hello";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
 
         match result {
             Ok(trees) => {
@@ -435,8 +590,9 @@ mod tests {
         let grammar = builder.into_grammar("greeting").expect("Failed to build grammar");
         let parser = EarleyParser::new(grammar);
 
-        let input = vec!["hello"];
-        let result = parser.parse(input.into_iter());
+        let input_str = "hello";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
 
         match result {
             Ok(trees) => {
