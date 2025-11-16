@@ -254,7 +254,8 @@ fn convert_sequence(mut builder: GrammarBuilder, rule_name: &str, seq: &Sequence
     }
 
     // Add the production rule: rule_name := symbols[0] symbols[1] ...
-    builder = builder.rule(rule_name, &symbols.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+    let symbol_strs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
+    builder = builder.rule(rule_name, &symbol_strs);
     Ok(builder)
 }
 
@@ -345,11 +346,11 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
             Ok((builder, plus_name))
         }
         Repetition::ZeroOrMore => {
-            // Create a new rule: base_name_star := ε | base_name_star base_name
+            // Create a new rule: base_name_star := ε | base_name_star base_name (LEFT recursion like +)
             let star_name = format!("{}_star", base_name);
             builder = builder.nonterm(&star_name);
             builder = builder.rule(&star_name, &[] as &[&str]); // epsilon production
-            builder = builder.rule(&star_name, &[&star_name, &base_name]);
+            builder = builder.rule(&star_name, &[&star_name, &base_name]); // LEFT recursion
             Ok((builder, star_name))
         }
         Repetition::Optional => {
@@ -839,12 +840,15 @@ fn register_repetition_actions(
             if !registered.contains(&star_name) {
                 registered.insert(star_name.clone());
 
-                // Register actions for epsilon and recursive productions
+                // Register actions for epsilon and recursive productions (LEFT recursion)
                 // Epsilon production uses "_repeat_container" to match OneOrMore pattern
-                forest.action(&format!("{} -> ", star_name), |_nodes| {
+                let epsilon_prod = format!("{} -> ", star_name);
+                forest.action(&epsilon_prod, |_nodes| {
                     XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: vec![] }
                 });
-                forest.action(&format!("{} -> {} {}", star_name, star_name, base_name), |mut nodes| {
+                // LEFT recursion: star_name base_name (same as OneOrMore)
+                let recursive_prod = format!("{} -> {} {}", star_name, star_name, base_name);
+                forest.action(&recursive_prod, |mut nodes| {
                     // Same pattern as OneOrMore - flatten children
                     if nodes.len() >= 2 {
                         let right = nodes.pop().unwrap();
@@ -1514,3 +1518,4 @@ mod tests {
         assert!(result.is_err(), "Should not parse 'd'");
     }
 }
+
