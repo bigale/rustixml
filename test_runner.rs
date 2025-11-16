@@ -18,6 +18,8 @@ fn main() {
         "star-one",         // Test * with one character
         "star-two",         // Test * with two characters
         "star-simple",      // Test * with three characters
+        "optional-empty",   // Test ? with empty input
+        "optional-simple",  // Test ? with one character
         // "star-test",    // Disabled - uses character class
         // "optional-test", // Disabled - needs debugging
     ];
