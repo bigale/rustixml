@@ -321,22 +321,28 @@ let ixml = r#"greeting: "hello"."#;
 - ✅ **XML generation for sequences** - Character sequences correctly concatenated in output
 - **Test Results**: **6/6 runtime_parser tests + 1/1 conformance test passing!**
 
+**Mark Support Complete! ✅**
+- ✅ **Attribute marks (@)** - Elements with `@` mark become XML attributes on parent element
+- ✅ **Hidden marks (-)** - Elements with `-` mark are hidden from output, children promoted
+- ✅ **Promoted marks (^)** - Elements with `^` mark have children promoted to parent level
+- ✅ **Factor-level marks** - Marks on nonterminal references (e.g., `element: @name body.`)
+- ✅ **Rule-level marks** - Marks on rule definitions (planned for future)
+- ✅ **Attribute extraction** - Text content automatically extracted for attribute values
+- **Test Results**: **9/9 runtime_parser tests passing!** (including 3 mark-specific tests)
+
 ### Next Steps
 
 **For Full Conformance Testing:**
 1. ~~**Add comment support**~~ ✅ **COMPLETE** - Handle `{...}` comments in iXML grammar lexer
 2. ~~**Character-level tokenization**~~ ✅ **COMPLETE** - Parse individual characters instead of whitespace-splitting
-3. **Implement marks in XML generation**:
-   - `-` (hidden) - Don't include element in output
-   - `@` (attribute) - Element becomes XML attribute
-   - `^` (promoted) - Lift children to parent level
+3. ~~**Implement marks in XML generation**~~ ✅ **COMPLETE** - All three marks (@, -, ^) fully implemented
 4. **Character classes in runtime** - Support `[a-z]`, `[L]`, etc. in AST-to-Earlgrey converter
 5. **Groups in runtime** - Support `(a | b)` in AST-to-Earlgrey converter
 
 **Known Limitations:**
 - ~~Tokenization currently splits on whitespace~~ ✅ **COMPLETE** - Now parses character-by-character
 - ~~Comments `{...}` not yet supported in lexer~~ ✅ **COMPLETE**
-- Marks parsed but not yet applied in XML generation
+- ~~Marks parsed but not yet applied in XML generation~~ ✅ **COMPLETE**
 - Character classes/groups parsed but not yet in runtime converter
 
 ### Previous: Phase 2 Progress

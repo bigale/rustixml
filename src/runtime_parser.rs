@@ -4,7 +4,7 @@
 //! to Earlgrey grammars and using them to parse input.
 
 use earlgrey::{EarleyParser, GrammarBuilder, EarleyForest};
-use crate::ast::{IxmlGrammar, Rule, Alternatives, Sequence, Factor, BaseFactor, Repetition};
+use crate::ast::{IxmlGrammar, Rule, Alternatives, Sequence, Factor, BaseFactor, Repetition, Mark};
 
 /// Convert an iXML AST to an Earlgrey grammar
 ///
@@ -214,24 +214,38 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
 /// Simple XML node representation
 #[derive(Clone, Debug, PartialEq)]
 pub enum XmlNode {
-    Element { name: String, children: Vec<XmlNode> },
+    Element { name: String, attributes: Vec<(String, String)>, children: Vec<XmlNode> },
     Text(String),
+    Attribute { name: String, value: String }, // For @mark - to be extracted by parent
 }
 
 impl XmlNode {
     pub fn to_xml(&self) -> String {
         match self {
-            XmlNode::Element { name, children } => {
+            XmlNode::Element { name, attributes, children } => {
+                let attrs_str = if attributes.is_empty() {
+                    String::new()
+                } else {
+                    format!(" {}", attributes.iter()
+                        .map(|(k, v)| format!("{}=\"{}\"", k, v))
+                        .collect::<Vec<_>>()
+                        .join(" "))
+                };
+
                 if children.is_empty() {
-                    format!("<{}/>", name)
+                    format!("<{}{}/>", name, attrs_str)
                 } else {
                     let children_xml: String = children.iter()
                         .map(|c| c.to_xml())
                         .collect();
-                    format!("<{}>{}</{}>", name, children_xml, name)
+                    format!("<{}{}>{}</{}>", name, attrs_str, children_xml, name)
                 }
             }
             XmlNode::Text(s) => s.clone(),
+            XmlNode::Attribute { .. } => {
+                // Attributes should have been extracted by parent, shouldn't appear in output
+                String::new()
+            }
         }
     }
 }
@@ -249,7 +263,7 @@ pub fn build_xml_forest(grammar: &IxmlGrammar) -> EarleyForest<'static, XmlNode>
     // Unlike traditional semantic actions, Earlgrey requires actions per production,
     // not per nonterminal. The format is "nonterminal -> symbol1 symbol2 ..."
     for rule in &grammar.rules {
-        register_rule_actions(&mut forest, &rule.name, &rule.alternatives);
+        register_rule_actions(&mut forest, rule);
     }
 
     // Also register actions for literal sequence nonterminals
@@ -262,19 +276,29 @@ pub fn build_xml_forest(grammar: &IxmlGrammar) -> EarleyForest<'static, XmlNode>
 /// Production format: "nonterminal -> symbol1 symbol2 ..."
 fn register_rule_actions(
     forest: &mut EarleyForest<'static, XmlNode>,
-    rule_name: &str,
-    alts: &Alternatives,
+    rule: &Rule,
 ) {
     use std::collections::HashSet;
     let mut registered = HashSet::new();
 
-    for seq in &alts.alts {
+    let rule_name = &rule.name;
+    let rule_mark = rule.mark;
+
+    for seq in &rule.alternatives.alts {
         // Build the list of symbols for this production
         let mut symbols = Vec::new();
+        let mut factor_marks = Vec::new();
 
         for factor in &seq.factors {
             let (_builder_placeholder, symbol_name) = get_factor_symbol(factor);
             symbols.push(symbol_name);
+
+            // Extract mark from nonterminal factors
+            let factor_mark = match &factor.base {
+                BaseFactor::Nonterminal { mark, .. } => *mark,
+                _ => Mark::None,
+            };
+            factor_marks.push(factor_mark);
         }
 
         // Create the production string: "rule_name -> symbol1 symbol2 ..."
@@ -287,10 +311,87 @@ fn register_rule_actions(
         // Register the action for this production
         let rule_name_for_closure = rule_name.to_string();
         forest.action(&production, move |nodes: Vec<XmlNode>| {
-            // Wrap all child nodes in an element with the rule name
-            XmlNode::Element {
-                name: rule_name_for_closure.clone(),
-                children: nodes,
+            // Separate attribute children from regular children and process marks
+            let mut attributes = Vec::new();
+            let mut children = Vec::new();
+
+            for (i, node) in nodes.into_iter().enumerate() {
+                let factor_mark = if i < factor_marks.len() {
+                    factor_marks[i]
+                } else {
+                    Mark::None
+                };
+
+                match (node, factor_mark) {
+                    // Attribute mark on element - convert element to attribute
+                    (XmlNode::Element { name, children: inner, .. }, Mark::Attribute) => {
+                        let value = extract_text_from_nodes(&inner);
+                        attributes.push((name, value));
+                    }
+                    // Attribute nodes - extract and add to attributes list
+                    (XmlNode::Attribute { name, value }, _) => {
+                        attributes.push((name, value));
+                    }
+                    // Hidden nodes - unwrap and promote children
+                    (XmlNode::Element { children: inner, .. }, Mark::Hidden) => {
+                        children.extend(inner);
+                    }
+                    // Promoted nodes - unwrap and promote children
+                    (XmlNode::Element { children: inner, .. }, Mark::Promoted) => {
+                        children.extend(inner);
+                    }
+                    // Regular nodes - keep as is
+                    (node, _) => {
+                        children.push(node);
+                    }
+                }
+            }
+
+            // Apply mark from rule definition
+            match rule_mark {
+                Mark::Hidden => {
+                    // Hidden: return children without wrapper
+                    // For simplicity, wrap in a pseudo-element that gets unwrapped by parent
+                    // Actually, we need to return something - let's return the first child
+                    // or create an empty element that won't render
+                    if children.len() == 1 {
+                        children.into_iter().next().unwrap()
+                    } else {
+                        XmlNode::Element {
+                            name: "__hidden__".to_string(),
+                            attributes: vec![],
+                            children,
+                        }
+                    }
+                }
+                Mark::Attribute => {
+                    // Attribute: extract text content and create Attribute node
+                    let text_value = extract_text_from_nodes(&children);
+                    XmlNode::Attribute {
+                        name: rule_name_for_closure.clone(),
+                        value: text_value,
+                    }
+                }
+                Mark::Promoted => {
+                    // Promoted: return children without wrapper
+                    if children.len() == 1 {
+                        children.into_iter().next().unwrap()
+                    } else {
+                        XmlNode::Element {
+                            name: "__promoted__".to_string(),
+                            attributes: vec![],
+                            children,
+                        }
+                    }
+                }
+                Mark::None => {
+                    // Normal: wrap in element
+                    XmlNode::Element {
+                        name: rule_name_for_closure.clone(),
+                        attributes,
+                        children,
+                    }
+                }
             }
         });
 
@@ -299,6 +400,19 @@ fn register_rule_actions(
             register_repetition_actions(forest, factor, &mut registered);
         }
     }
+}
+
+/// Extract text content from a list of nodes
+fn extract_text_from_nodes(nodes: &[XmlNode]) -> String {
+    let mut result = String::new();
+    for node in nodes {
+        match node {
+            XmlNode::Text(t) => result.push_str(t),
+            XmlNode::Element { children, .. } => result.push_str(&extract_text_from_nodes(children)),
+            XmlNode::Attribute { value, .. } => result.push_str(value),
+        }
+    }
+    result
 }
 
 /// Register semantic actions for literal sequence nonterminals
@@ -399,10 +513,10 @@ fn register_repetition_actions(
 
                 // Register actions for both productions: base and recursive
                 forest.action(&format!("{} -> {}", plus_name, base_name), |nodes| {
-                    XmlNode::Element { name: "repeat".to_string(), children: nodes }
+                    XmlNode::Element { name: "repeat".to_string(), attributes: vec![], children: nodes }
                 });
                 forest.action(&format!("{} -> {} {}", plus_name, plus_name, base_name), |nodes| {
-                    XmlNode::Element { name: "repeat".to_string(), children: nodes }
+                    XmlNode::Element { name: "repeat".to_string(), attributes: vec![], children: nodes }
                 });
             }
         }
@@ -413,10 +527,10 @@ fn register_repetition_actions(
 
                 // Register actions for epsilon and recursive productions
                 forest.action(&star_name, |_nodes| {
-                    XmlNode::Element { name: "repeat".to_string(), children: vec![] }
+                    XmlNode::Element { name: "repeat".to_string(), attributes: vec![], children: vec![] }
                 });
                 forest.action(&format!("{} -> {} {}", star_name, star_name, base_name), |nodes| {
-                    XmlNode::Element { name: "repeat".to_string(), children: nodes }
+                    XmlNode::Element { name: "repeat".to_string(), attributes: vec![], children: nodes }
                 });
             }
         }
@@ -427,10 +541,10 @@ fn register_repetition_actions(
 
                 // Register actions for epsilon and base productions
                 forest.action(&opt_name, |_nodes| {
-                    XmlNode::Element { name: "optional".to_string(), children: vec![] }
+                    XmlNode::Element { name: "optional".to_string(), attributes: vec![], children: vec![] }
                 });
                 forest.action(&format!("{} -> {}", opt_name, base_name), |nodes| {
-                    XmlNode::Element { name: "optional".to_string(), children: nodes }
+                    XmlNode::Element { name: "optional".to_string(), attributes: vec![], children: nodes }
                 });
             }
         }
@@ -610,6 +724,121 @@ mod tests {
                         let xml_string = tree.to_xml();
                         println!("XML String: {}", xml_string);
                         assert_eq!(xml_string, "<greeting>hello</greeting>");
+                    }
+                    Err(e) => panic!("Failed to build XML tree: {}", e),
+                }
+            }
+            Err(e) => panic!("Parse failed: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_attribute_mark() {
+        // Test that @name creates an attribute
+        let ixml = r#"
+            element: @name body.
+            name: "foo".
+            body: "bar".
+        "#;
+
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("element").expect("Failed to build grammar");
+        let parser = EarleyParser::new(grammar);
+
+        let input_str = "foobar";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+
+        match result {
+            Ok(trees) => {
+                let forest = build_xml_forest(&ast);
+                let xml_result = forest.eval(&trees);
+
+                match xml_result {
+                    Ok(tree) => {
+                        let xml_string = tree.to_xml();
+                        println!("Attribute mark XML: {}", xml_string);
+                        // Should have name as an attribute
+                        assert!(xml_string.contains("name="), "Should contain name attribute");
+                        assert!(xml_string.contains("foo"), "Attribute value should be 'foo'");
+                    }
+                    Err(e) => panic!("Failed to build XML tree: {}", e),
+                }
+            }
+            Err(e) => panic!("Parse failed: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_hidden_mark() {
+        // Test that -name hides the element
+        let ixml = r#"
+            sentence: word -space word.
+            word: "hello" | "world".
+            space: " ".
+        "#;
+
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("sentence").expect("Failed to build grammar");
+        let parser = EarleyParser::new(grammar);
+
+        let input_str = "hello world";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+
+        match result {
+            Ok(trees) => {
+                let forest = build_xml_forest(&ast);
+                let xml_result = forest.eval(&trees);
+
+                match xml_result {
+                    Ok(tree) => {
+                        let xml_string = tree.to_xml();
+                        println!("Hidden mark XML: {}", xml_string);
+                        // Should not contain <space> element
+                        assert!(!xml_string.contains("<space"), "Should not contain space element");
+                        assert!(xml_string.contains("hello"), "Should contain 'hello'");
+                        assert!(xml_string.contains("world"), "Should contain 'world'");
+                    }
+                    Err(e) => panic!("Failed to build XML tree: {}", e),
+                }
+            }
+            Err(e) => panic!("Parse failed: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_promoted_mark() {
+        // Test that ^name promotes children to parent level
+        let ixml = r#"
+            container: ^wrapper body.
+            wrapper: "prefix".
+            body: "content".
+        "#;
+
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("container").expect("Failed to build grammar");
+        let parser = EarleyParser::new(grammar);
+
+        let input_str = "prefixcontent";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+
+        match result {
+            Ok(trees) => {
+                let forest = build_xml_forest(&ast);
+                let xml_result = forest.eval(&trees);
+
+                match xml_result {
+                    Ok(tree) => {
+                        let xml_string = tree.to_xml();
+                        println!("Promoted mark XML: {}", xml_string);
+                        // wrapper should be promoted, so we shouldn't see <wrapper>
+                        assert!(!xml_string.contains("<wrapper"), "Should not contain wrapper element");
+                        assert!(xml_string.contains("prefix"), "Should contain 'prefix'");
                     }
                     Err(e) => panic!("Failed to build XML tree: {}", e),
                 }
