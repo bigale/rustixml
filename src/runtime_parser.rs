@@ -37,9 +37,9 @@ pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> 
 
     for (content, negated) in charclasses_seen {
         let class_name = if negated {
-            format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+            format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
         } else {
-            format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+            format!("charclass_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
         };
         let predicate = parse_char_class(&content, negated);
         builder = builder.terminal(&class_name, predicate);
@@ -156,9 +156,9 @@ fn collect_repetition_from_factor(factor: &Factor, nonterminals: &mut std::colle
         BaseFactor::CharClass { content, negated } => {
             // Character classes become terminals, use the same naming convention
             if *negated {
-                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
             } else {
-                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
             }
         }
         BaseFactor::Group { alternatives } => {
@@ -267,19 +267,19 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
     let parts: Vec<&str> = content.split(',').map(|s| s.trim()).collect();
 
     for part in parts {
-        if part.contains('-') && part.contains('\'') {
-            // Character range like 'a'-'z'
+        if part.contains('-') && (part.contains('\'') || part.contains('"')) {
+            // Character range like 'a'-'z' or "a"-"z"
             let range_parts: Vec<&str> = part.split('-').collect();
             if range_parts.len() == 2 {
-                let start_char = range_parts[0].trim().trim_matches('\'').chars().next();
-                let end_char = range_parts[1].trim().trim_matches('\'').chars().next();
+                let start_char = range_parts[0].trim().trim_matches('\'').trim_matches('"').chars().next();
+                let end_char = range_parts[1].trim().trim_matches('\'').trim_matches('"').chars().next();
                 if let (Some(start), Some(end)) = (start_char, end_char) {
                     ranges.push((start, end));
                 }
             }
-        } else if part.starts_with('\'') && part.ends_with('\'') {
-            // Single quoted character
-            let ch = part.trim_matches('\'').chars().next();
+        } else if (part.starts_with('\'') && part.ends_with('\'')) || (part.starts_with('"') && part.ends_with('"')) {
+            // Single quoted character with either ' or "
+            let ch = part.trim_matches('\'').trim_matches('"').chars().next();
             if let Some(c) = ch {
                 chars.push(c);
             }
@@ -403,9 +403,9 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
         BaseFactor::CharClass { content, negated } => {
             // Terminal was already defined in first pass, just return the name
             let class_name = if *negated {
-                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
             } else {
-                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
             };
             (builder, class_name)
         }
@@ -831,9 +831,9 @@ fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> 
             BaseFactor::Nonterminal { name, .. } => name.clone(),
             BaseFactor::CharClass { content, negated } => {
                 if *negated {
-                    format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+                    format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
                 } else {
-                    format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+                    format!("charclass_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
                 }
             }
             BaseFactor::Group { .. } => {
@@ -875,9 +875,9 @@ fn get_factor_symbol(factor: &Factor) -> (String, String) {
         BaseFactor::CharClass { content, negated } => {
             // Use the same naming as in convert_factor
             if *negated {
-                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
             } else {
-                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
             }
         }
         BaseFactor::Group { .. } => {

@@ -429,28 +429,33 @@ let ixml = r#"greeting: "hello"."#;
 - **Overall Test Results**: **12/14 tests passing (85.7% pass rate)**
 - **Known issues**:
   1. Empty element serialization (`<word/>` vs `<word></word>`) - functionally equivalent
-  2. Character classes with * or ? operators don't work yet (charclass + works fine)
 
 **Comprehensive Integration Testing Complete! ✅**
-- ✅ **12 passing tests** covering all major iXML features (85.7% pass rate)
+- ✅ **13 passing tests** covering all major iXML features (86.7% pass rate)
 - ✅ **simple** - Basic literal matching
 - ✅ **charclass-simple, charclass** - Character classes with + operator
 - ✅ **group-simple, group** - Grouped alternatives with repetitions
 - ✅ **comma-test** - Comma-separated sequences
 - ✅ **plus-simple, star-one, star-two, star-simple** - Repetition operators with literals
 - ✅ **optional-simple, optional-test** - Optional operator with literals and sequences
+- ✅ **star-test** - Character classes with * operator (all repetition operators work!)
 - ❌ **2 minor XML formatting issues** - Empty elements (`<word/>` vs `<word></word>`)
-- ❌ **star-test** - Character class in nonterminal with * operator (+ works fine)
+
+**Character Class Double Quote Fix! ✅**
+- ✅ **Fixed character class terminal naming** - Remove both single AND double quotes from terminal names
+  - Before: `charclass_"a"_"z"` (includes quotes, terminal not found!)
+  - After: `charclass_a_z` (clean name, terminal matches correctly)
+- ✅ **Fixed character class parsing** - Support both `'a'-'z'` and `"a"-"z"` syntax
+  - iXML parser produces: `["a"-"z"]` with double quotes
+  - Runtime parser now handles both quote styles in parse_char_class
+- ✅ **All character class repetitions work** - `["a"-"z"]*`, `["a"-"z"]+`, `["a"-"z"]?`
+- ✅ **Test results**: 13/15 passing (86.7%), only 2 XML formatting issues remain
 
 **Repetition Nonterminal Pre-Declaration Fix! ✅**
 - ✅ **Fixed nonterminal declaration order** - All repetition helper nonterminals (e.g., `letter_star`, `word_plus`) now declared upfront
 - ✅ **All literal repetitions work** - `"a"*`, `"a"+`, `"a"?` all passing
 - ✅ **Group repetitions work** - Dynamic declaration for `group_N_plus/star/opt` patterns
 - ✅ **Character class terminal order** - Terminals defined in first pass before rules
-- ❌ **star-test edge case** - Grammar: `word: letter*. letter: ["a"-"z"].` builds successfully but fails to parse "hello"
-  - **Investigation**: Created minimal Earlgrey test case - the exact same grammar pattern WORKS in standalone Earlgrey
-  - **Hypothesis**: Subtle difference in how we construct the grammar vs minimal test case
-  - **Test results**: 12/15 passing (80%), only 3 failures: 2 XML formatting (`<word/>` vs `<word></word>`), 1 parsing edge case
 
 ### Next Steps
 
