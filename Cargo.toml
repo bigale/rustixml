@@ -24,6 +24,11 @@ name = "rustixml"
 path = "src/bin/main.rs"
 required-features = []
 
+[[bin]]
+name = "test_runner"
+path = "test_runner.rs"
+required-features = []
+
 [profile.release]
 opt-level = 3
 lto = true

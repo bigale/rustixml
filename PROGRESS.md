@@ -369,6 +369,13 @@ let ixml = r#"greeting: "hello"."#;
 - Groups recurse through `collect_chars_from_factor()` and `declare_sequences_from_factor()`
 - Group actions pass through child nodes or wrap in `<group>` element for multiple children
 
+**Comma-Separated Sequence Support Complete! ✅**
+- ✅ **Grammar parsing** - Added comma token to RustyLR grammar parser
+- ✅ **Sequence alternatives** - Support both `a, b, c` and `a b c` syntax
+- ✅ **Parser integration** - Updated Sequence rule to handle both forms
+- ✅ **XML generation** - Comma-separated sequences generate proper XML
+- **Test Results**: **4/4 integration tests passing!** (simple, charclass-simple, group-simple, comma-test)
+
 ### Next Steps
 
 **For Full Conformance Testing:**
@@ -377,6 +384,7 @@ let ixml = r#"greeting: "hello"."#;
 3. ~~**Implement marks in XML generation**~~ ✅ **COMPLETE** - All three marks (@, -, ^) fully implemented
 4. ~~**Character classes in runtime**~~ ✅ **COMPLETE** - Support `[a-z]`, `[L]`, etc. in AST-to-Earlgrey converter
 5. ~~**Groups in runtime**~~ ✅ **COMPLETE** - Support `(a | b)` in AST-to-Earlgrey converter
+6. ~~**Comma-separated sequences**~~ ✅ **COMPLETE** - Support both `a, b, c` and `a b c` syntax
 
 **Known Limitations:**
 - ~~Tokenization currently splits on whitespace~~ ✅ **COMPLETE** - Now parses character-by-character

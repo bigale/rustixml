@@ -27,6 +27,7 @@ lr1! {
     %token tilde Token::Tilde;
     %token lparen Token::LParen;
     %token rparen Token::RParen;
+    %token comma Token::Comma;
 
     // Base factor (without repetition operator)
     BaseFactor(BaseFactor): tok=string {
@@ -96,8 +97,11 @@ lr1! {
     }
     ;
 
-    // Sequence: one or more factors
-    Sequence(Sequence): factors=Factor+ {
+    // Sequence: one or more factors (comma-separated or whitespace-separated)
+    Sequence(Sequence): factors=$sep(Factor, comma, +) {
+        Sequence::new(factors)
+    }
+    | factors=Factor+ {
         Sequence::new(factors)
     };
 
