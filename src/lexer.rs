@@ -215,11 +215,20 @@ impl Lexer {
 
         while let Some(ch) = self.peek() {
             if ch == '"' {
-                self.advance(); // skip closing quote
-                return Ok(Token::String(s));
+                self.advance();
+                // Check for escaped quote (doubled quote)
+                if self.peek() == Some('"') {
+                    // It's an escaped quote, add one quote to string and continue
+                    s.push('"');
+                    self.advance();
+                } else {
+                    // It's the closing quote
+                    return Ok(Token::String(s));
+                }
+            } else {
+                s.push(ch);
+                self.advance();
             }
-            s.push(ch);
-            self.advance();
         }
 
         Err("Unterminated string".to_string())
@@ -231,11 +240,20 @@ impl Lexer {
 
         while let Some(ch) = self.peek() {
             if ch == '\'' {
-                self.advance(); // skip closing quote
-                return Ok(Token::String(s));
+                self.advance();
+                // Check for escaped quote (doubled quote)
+                if self.peek() == Some('\'') {
+                    // It's an escaped quote, add one quote to string and continue
+                    s.push('\'');
+                    self.advance();
+                } else {
+                    // It's the closing quote
+                    return Ok(Token::String(s));
+                }
+            } else {
+                s.push(ch);
+                self.advance();
             }
-            s.push(ch);
-            self.advance();
         }
 
         Err("Unterminated character literal".to_string())
