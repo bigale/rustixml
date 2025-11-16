@@ -376,6 +376,13 @@ let ixml = r#"greeting: "hello"."#;
 - ✅ **XML generation** - Comma-separated sequences generate proper XML
 - **Test Results**: **4/4 integration tests passing!** (simple, charclass-simple, group-simple, comma-test)
 
+**Repetition XML Flattening Fix Complete! ✅**
+- ✅ **Container approach** - Repetitions use `_repeat_container` to hold child nodes
+- ✅ **Flatten on extraction** - Parent rules extract children from containers automatically
+- ✅ **Correct XML structure** - Repetitions like `letter+` now generate flat `<letter>` elements, not nested `<repeat>` tags
+- ✅ **All marks work** - Attribute, hidden, and promoted marks still function correctly
+- **Test Results**: **5/5 integration tests passing** + **20/20 runtime_parser unit tests passing!**
+
 ### Next Steps
 
 **For Full Conformance Testing:**

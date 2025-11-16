@@ -480,6 +480,16 @@ fn register_rule_actions(
                     Mark::None
                 };
 
+                // Handle repetition containers - extract their children
+                if let XmlNode::Element { ref name, .. } = node {
+                    if name == "_repeat_container" {
+                        if let XmlNode::Element { children: inner, .. } = node {
+                            children.extend(inner);
+                            continue;
+                        }
+                    }
+                }
+
                 match (node, factor_mark) {
                     // Attribute mark on element - convert element to attribute
                     (XmlNode::Element { name, children: inner, .. }, Mark::Attribute) => {
@@ -800,11 +810,36 @@ fn register_repetition_actions(
                 registered.insert(plus_name.clone());
 
                 // Register actions for both productions: base and recursive
+                // Repetitions pass through children unchanged
                 forest.action(&format!("{} -> {}", plus_name, base_name), |nodes| {
-                    XmlNode::Element { name: "repeat".to_string(), attributes: vec![], children: nodes }
+                    // Base case - just pass through the child nodes
+                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
                 });
-                forest.action(&format!("{} -> {} {}", plus_name, plus_name, base_name), |nodes| {
-                    XmlNode::Element { name: "repeat".to_string(), attributes: vec![], children: nodes }
+                forest.action(&format!("{} -> {} {}", plus_name, plus_name, base_name), |mut nodes| {
+                    // Recursive case - flatten children from both sides
+                    if nodes.len() >= 2 {
+                        let right = nodes.pop().unwrap();
+                        let left = nodes.pop().unwrap();
+
+                        let mut all_children = vec![];
+                        // Extract children from left (the recursive _plus result)
+                        if let XmlNode::Element { children, name, .. } = left {
+                            if name == "_repeat_container" {
+                                all_children.extend(children);
+                            } else {
+                                all_children.push(XmlNode::Element { name, attributes: vec![], children });
+                            }
+                        } else {
+                            all_children.push(left);
+                        }
+
+                        // Add right child
+                        all_children.push(right);
+
+                        XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: all_children }
+                    } else {
+                        XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
+                    }
                 });
             }
         }

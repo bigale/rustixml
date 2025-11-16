@@ -9,6 +9,7 @@ fn main() {
     let test_cases = vec![
         "simple",
         "charclass-simple",
+        "charclass",
         "group-simple",
         "comma-test",
     ];
