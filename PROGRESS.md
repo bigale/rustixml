@@ -432,7 +432,7 @@ let ixml = r#"greeting: "hello"."#;
   2. Character classes with * or ? operators don't work yet (charclass + works fine)
 
 **Comprehensive Integration Testing Complete! ✅**
-- ✅ **12 passing tests** covering all major iXML features
+- ✅ **12 passing tests** covering all major iXML features (85.7% pass rate)
 - ✅ **simple** - Basic literal matching
 - ✅ **charclass-simple, charclass** - Character classes with + operator
 - ✅ **group-simple, group** - Grouped alternatives with repetitions
@@ -440,7 +440,14 @@ let ixml = r#"greeting: "hello"."#;
 - ✅ **plus-simple, star-one, star-two, star-simple** - Repetition operators with literals
 - ✅ **optional-simple, optional-test** - Optional operator with literals and sequences
 - ❌ **2 minor XML formatting issues** - Empty elements (`<word/>` vs `<word></word>`)
-- ❌ **Character class + star/optional** - Terminals with * or ? need investigation
+- ❌ **star-test** - Character class in nonterminal with * operator (+ works fine)
+
+**Character Class Terminal Declaration Fix! ✅**
+- ✅ **Fixed terminal declaration order** - Character classes now defined in first pass
+- ✅ **Pattern matches literals** - Terminals defined upfront before rules
+- ✅ **No duplicate definitions** - convert_factor() just returns terminal name
+- ❌ **star-test still fails** - Issue with * operator on nonterminals containing charclasses
+- **Root cause identified**: + operator works, * operator doesn't - needs investigation
 
 ### Next Steps
 
