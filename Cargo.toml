@@ -29,6 +29,11 @@ name = "test_runner"
 path = "test_runner.rs"
 required-features = []
 
+[[bin]]
+name = "minimal_star_test"
+path = "minimal_star_test.rs"
+required-features = []
+
 [profile.release]
 opt-level = 3
 lto = true

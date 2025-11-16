@@ -45,13 +45,20 @@ pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> 
         builder = builder.terminal(&class_name, predicate);
     }
 
-    // Second pass: declare all nonterminals (including multi-char literal sequences)
+    // Second pass: declare all nonterminals (including multi-char literal sequences and repetitions)
     for rule in &grammar.rules {
         builder = builder.nonterm(&rule.name);
     }
 
     // Declare sequence nonterminals for multi-character literals
     declare_literal_sequences(grammar, &mut builder);
+
+    // Declare repetition helper nonterminals (e.g., letter_star, word_plus, etc.)
+    let mut repetition_nonterminals = std::collections::HashSet::new();
+    collect_repetition_nonterminals(grammar, &mut repetition_nonterminals);
+    for nonterm in repetition_nonterminals {
+        builder = builder.nonterm(&nonterm);
+    }
 
     // Third pass: add all the rules
     for rule in &grammar.rules {
@@ -116,6 +123,65 @@ fn collect_charclasses_from_factor(factor: &Factor, charclasses: &mut std::colle
             collect_charclasses_from_alternatives(alternatives, charclasses);
         }
         _ => {}, // Literal and Nonterminal don't contain character classes
+    }
+}
+
+/// Collect all repetition helper nonterminals that will be created
+fn collect_repetition_nonterminals(grammar: &IxmlGrammar, nonterminals: &mut std::collections::HashSet<String>) {
+    for rule in &grammar.rules {
+        collect_repetition_from_alternatives(&rule.alternatives, nonterminals);
+    }
+}
+
+fn collect_repetition_from_alternatives(alts: &Alternatives, nonterminals: &mut std::collections::HashSet<String>) {
+    for seq in &alts.alts {
+        for factor in &seq.factors {
+            collect_repetition_from_factor(factor, nonterminals);
+        }
+    }
+}
+
+fn collect_repetition_from_factor(factor: &Factor, nonterminals: &mut std::collections::HashSet<String>) {
+    // Get the base name for this factor
+    let base_name = match &factor.base {
+        BaseFactor::Literal { value, .. } => {
+            // Literals become terminals (single char) or sequences (multi-char)
+            if value.len() == 1 {
+                char_terminal_name(value.chars().next().unwrap())
+            } else {
+                format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+            }
+        }
+        BaseFactor::Nonterminal { name, .. } => name.clone(),
+        BaseFactor::CharClass { content, negated } => {
+            // Character classes become terminals, use the same naming convention
+            if *negated {
+                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+            } else {
+                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+            }
+        }
+        BaseFactor::Group { alternatives } => {
+            // Recurse into group to collect repetitions inside
+            collect_repetition_from_alternatives(alternatives, nonterminals);
+            // Groups get unique names based on GROUP_COUNTER, but we can't predict those
+            // They're handled dynamically during rule conversion
+            return;
+        }
+    };
+
+    // Add the repetition helper nonterminal based on the repetition type
+    match factor.repetition {
+        Repetition::None => {}, // No helper needed
+        Repetition::OneOrMore => {
+            nonterminals.insert(format!("{}_plus", base_name));
+        }
+        Repetition::ZeroOrMore => {
+            nonterminals.insert(format!("{}_star", base_name));
+        }
+        Repetition::Optional => {
+            nonterminals.insert(format!("{}_opt", base_name));
+        }
     }
 }
 
@@ -376,7 +442,11 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
         Repetition::OneOrMore => {
             // Create a new rule: base_name_plus := base_name | base_name_plus base_name
             let plus_name = format!("{}_plus", base_name);
-            builder = builder.nonterm(&plus_name);
+            // Groups need dynamic declaration (can't predict group_N names upfront)
+            if base_name.starts_with("group_") {
+                builder = builder.nonterm(&plus_name);
+            }
+            // Other nonterminals already declared in upfront pass
             builder = builder.rule(&plus_name, &[&base_name]);
             builder = builder.rule(&plus_name, &[&plus_name, &base_name]);
             Ok((builder, plus_name))
@@ -384,7 +454,11 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
         Repetition::ZeroOrMore => {
             // Create a new rule: base_name_star := ε | base_name_star base_name (LEFT recursion like +)
             let star_name = format!("{}_star", base_name);
-            builder = builder.nonterm(&star_name);
+            // Groups need dynamic declaration (can't predict group_N names upfront)
+            if base_name.starts_with("group_") {
+                builder = builder.nonterm(&star_name);
+            }
+            // Other nonterminals already declared in upfront pass
             builder = builder.rule(&star_name, &[] as &[&str]); // epsilon production
             builder = builder.rule(&star_name, &[&star_name, &base_name]); // LEFT recursion
             Ok((builder, star_name))
@@ -392,7 +466,11 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
         Repetition::Optional => {
             // Create a new rule: base_name_opt := ε | base_name
             let opt_name = format!("{}_opt", base_name);
-            builder = builder.nonterm(&opt_name);
+            // Groups need dynamic declaration (can't predict group_N names upfront)
+            if base_name.starts_with("group_") {
+                builder = builder.nonterm(&opt_name);
+            }
+            // Other nonterminals already declared in upfront pass
             builder = builder.rule(&opt_name, &[] as &[&str]); // epsilon production
             builder = builder.rule(&opt_name, &[&base_name]);
             Ok((builder, opt_name))

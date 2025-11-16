@@ -442,12 +442,15 @@ let ixml = r#"greeting: "hello"."#;
 - ❌ **2 minor XML formatting issues** - Empty elements (`<word/>` vs `<word></word>`)
 - ❌ **star-test** - Character class in nonterminal with * operator (+ works fine)
 
-**Character Class Terminal Declaration Fix! ✅**
-- ✅ **Fixed terminal declaration order** - Character classes now defined in first pass
-- ✅ **Pattern matches literals** - Terminals defined upfront before rules
-- ✅ **No duplicate definitions** - convert_factor() just returns terminal name
-- ❌ **star-test still fails** - Issue with * operator on nonterminals containing charclasses
-- **Root cause identified**: + operator works, * operator doesn't - needs investigation
+**Repetition Nonterminal Pre-Declaration Fix! ✅**
+- ✅ **Fixed nonterminal declaration order** - All repetition helper nonterminals (e.g., `letter_star`, `word_plus`) now declared upfront
+- ✅ **All literal repetitions work** - `"a"*`, `"a"+`, `"a"?` all passing
+- ✅ **Group repetitions work** - Dynamic declaration for `group_N_plus/star/opt` patterns
+- ✅ **Character class terminal order** - Terminals defined in first pass before rules
+- ❌ **star-test edge case** - Grammar: `word: letter*. letter: ["a"-"z"].` builds successfully but fails to parse "hello"
+  - **Investigation**: Created minimal Earlgrey test case - the exact same grammar pattern WORKS in standalone Earlgrey
+  - **Hypothesis**: Subtle difference in how we construct the grammar vs minimal test case
+  - **Test results**: 12/15 passing (80%), only 3 failures: 2 XML formatting (`<word/>` vs `<word></word>`), 1 parsing edge case
 
 ### Next Steps
 
