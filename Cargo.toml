@@ -1,0 +1,33 @@
+[package]
+name = "rustixml"
+version = "0.1.0"
+edition = "2021"
+authors = ["rustixml contributors"]
+description = "Invisible XML (iXML) parser implementation in Rust using LALR+GLR"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bigale/rustixml"
+keywords = ["parser", "xml", "ixml", "invisible-xml", "glr"]
+categories = ["parsing", "text-processing"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+rusty_lr = "3.34.0"
+unicode-normalization = "0.1"
+earlgrey = "0.3"
+
+[dev-dependencies]
+
+[[bin]]
+name = "rustixml"
+path = "src/bin/main.rs"
+required-features = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
