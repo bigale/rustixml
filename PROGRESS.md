@@ -330,20 +330,39 @@ let ixml = r#"greeting: "hello"."#;
 - ✅ **Attribute extraction** - Text content automatically extracted for attribute values
 - **Test Results**: **9/9 runtime_parser tests passing!** (including 3 mark-specific tests)
 
+**Character Class Support Complete! ✅**
+- ✅ **Character ranges** - Support `['a'-'z']`, `['0'-'9']` syntax in runtime parser
+- ✅ **Individual characters** - Support `['a', 'e', 'i']` comma-separated characters
+- ✅ **Unicode categories** - Support `[L]` (Letter), `[Nd]` (Decimal Number), etc.
+- ✅ **Negated classes** - Support `~['0'-'9']` for matching non-digits
+- ✅ **Terminal predicates** - Convert character classes to Earlgrey terminal predicates
+- ✅ **Repetition support** - Character classes work with `+`, `*`, `?` operators
+- ✅ **Multi-byte UTF-8** - Correctly handles multi-byte characters like 'ñ'
+- ✅ **XML generation** - Character class matches generate proper XML elements
+- **Test Results**: **15/15 runtime_parser tests passing!** (including 6 character class tests)
+
+**Key Implementation Details:**
+- `parse_char_class()` function parses character class syntax into predicate closures
+- Character count check (`chars().count()`) instead of byte length for UTF-8 support
+- Unique terminal naming: `charclass_a_z` for `['a'-'z']`, `charclass_neg_0_9` for `~['0'-'9']`
+- Unicode category mapping to Rust's built-in character classification functions
+- Integration with repetition actions in `register_repetition_actions()`
+
 ### Next Steps
 
 **For Full Conformance Testing:**
 1. ~~**Add comment support**~~ ✅ **COMPLETE** - Handle `{...}` comments in iXML grammar lexer
 2. ~~**Character-level tokenization**~~ ✅ **COMPLETE** - Parse individual characters instead of whitespace-splitting
 3. ~~**Implement marks in XML generation**~~ ✅ **COMPLETE** - All three marks (@, -, ^) fully implemented
-4. **Character classes in runtime** - Support `[a-z]`, `[L]`, etc. in AST-to-Earlgrey converter
+4. ~~**Character classes in runtime**~~ ✅ **COMPLETE** - Support `[a-z]`, `[L]`, etc. in AST-to-Earlgrey converter
 5. **Groups in runtime** - Support `(a | b)` in AST-to-Earlgrey converter
 
 **Known Limitations:**
 - ~~Tokenization currently splits on whitespace~~ ✅ **COMPLETE** - Now parses character-by-character
 - ~~Comments `{...}` not yet supported in lexer~~ ✅ **COMPLETE**
 - ~~Marks parsed but not yet applied in XML generation~~ ✅ **COMPLETE**
-- Character classes/groups parsed but not yet in runtime converter
+- ~~Character classes parsed but not yet in runtime converter~~ ✅ **COMPLETE**
+- Groups `(a | b)` parsed but not yet in runtime converter
 
 ### Previous: Phase 2 Progress
 

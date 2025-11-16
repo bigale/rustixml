@@ -126,6 +126,101 @@ fn char_terminal_name(ch: char) -> String {
     }
 }
 
+/// Parse a character class content string and return a predicate function
+/// Examples: "'a'-'z'" → matches a-z, "L" → matches Unicode Letter category
+fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 'static> {
+    // Parse the content to extract ranges and individual characters
+    let mut chars = Vec::new();
+    let mut ranges = Vec::new();
+    let mut unicode_categories = Vec::new();
+
+    let content = content.trim();
+    let parts: Vec<&str> = content.split(',').map(|s| s.trim()).collect();
+
+    for part in parts {
+        if part.contains('-') && part.contains('\'') {
+            // Character range like 'a'-'z'
+            let range_parts: Vec<&str> = part.split('-').collect();
+            if range_parts.len() == 2 {
+                let start_char = range_parts[0].trim().trim_matches('\'').chars().next();
+                let end_char = range_parts[1].trim().trim_matches('\'').chars().next();
+                if let (Some(start), Some(end)) = (start_char, end_char) {
+                    ranges.push((start, end));
+                }
+            }
+        } else if part.starts_with('\'') && part.ends_with('\'') {
+            // Single quoted character
+            let ch = part.trim_matches('\'').chars().next();
+            if let Some(c) = ch {
+                chars.push(c);
+            }
+        } else if part.len() == 1 || part.len() == 2 {
+            // Unicode category like "L" or "Nd"
+            unicode_categories.push(part.to_string());
+        }
+    }
+
+    // Create the predicate function
+    Box::new(move |s: &str| {
+        // Check if the string is exactly one character (not one byte)
+        if s.chars().count() != 1 {
+            return false;
+        }
+        let ch = s.chars().next().unwrap();
+
+        let mut matches = false;
+
+        // Check individual characters
+        if chars.contains(&ch) {
+            matches = true;
+        }
+
+        // Check ranges
+        for (start, end) in &ranges {
+            if ch >= *start && ch <= *end {
+                matches = true;
+                break;
+            }
+        }
+
+        // Check Unicode categories
+        for category in &unicode_categories {
+            let category_matches = match category.as_str() {
+                "L" => ch.is_alphabetic(),
+                "Ll" => ch.is_lowercase(),
+                "Lu" => ch.is_uppercase(),
+                "Lt" => ch.is_uppercase(), // Titlecase (approximation)
+                "Lm" => ch.is_alphabetic(), // Modifier letter (approximation)
+                "Lo" => ch.is_alphabetic(), // Other letter (approximation)
+                "M" => false, // Mark categories (not easily checked in Rust)
+                "N" => ch.is_numeric(),
+                "Nd" => ch.is_numeric() && ch.is_ascii_digit(),
+                "Nl" => ch.is_numeric(), // Letter number (approximation)
+                "No" => ch.is_numeric(), // Other number (approximation)
+                "P" => ch.is_ascii_punctuation(),
+                "S" => !ch.is_alphanumeric() && !ch.is_whitespace(), // Symbol (approximation)
+                "Z" => ch.is_whitespace(),
+                "Zs" => ch == ' ', // Space separator
+                "Zl" => ch == '\u{2028}', // Line separator
+                "Zp" => ch == '\u{2029}', // Paragraph separator
+                "C" => ch.is_control(),
+                _ => false,
+            };
+            if category_matches {
+                matches = true;
+                break;
+            }
+        }
+
+        // Apply negation if needed
+        if negated {
+            !matches
+        } else {
+            matches
+        }
+    })
+}
+
 /// Convert a sequence (multiple factors in a row)
 fn convert_sequence(mut builder: GrammarBuilder, rule_name: &str, seq: &Sequence) -> Result<GrammarBuilder, String> {
     // Build a list of symbols (terminals and nonterminals) for this production
@@ -175,8 +270,23 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
             // TODO: Track mark for XML generation
             (builder, name.clone())
         }
-        _ => {
-            return Err("Character classes and groups not yet supported".to_string());
+        BaseFactor::CharClass { content, negated } => {
+            // Create a terminal for this character class
+            let class_name = if *negated {
+                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+            } else {
+                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+            };
+
+            // Parse the character class and create a predicate
+            let predicate = parse_char_class(content, *negated);
+
+            // Define the terminal with the predicate
+            let b = builder.terminal(&class_name, predicate);
+            (b, class_name)
+        }
+        BaseFactor::Group { .. } => {
+            return Err("Groups not yet supported".to_string());
         }
     };
     builder = new_builder;
@@ -476,9 +586,17 @@ fn get_factor_symbol(factor: &Factor) -> ((), String) {
             }
         }
         BaseFactor::Nonterminal { name, mark: _ } => name.clone(),
-        _ => {
-            // TODO: Handle character classes and groups
-            "UNSUPPORTED".to_string()
+        BaseFactor::CharClass { content, negated } => {
+            // Use the same naming as in convert_factor
+            if *negated {
+                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+            } else {
+                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+            }
+        }
+        BaseFactor::Group { .. } => {
+            // TODO: Handle groups
+            "UNSUPPORTED_GROUP".to_string()
         }
     };
 
@@ -502,7 +620,14 @@ fn register_repetition_actions(
             format!("lit_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
         }
         BaseFactor::Nonterminal { name, mark: _ } => name.clone(),
-        _ => return,
+        BaseFactor::CharClass { content, negated } => {
+            if *negated {
+                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+            } else {
+                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+            }
+        }
+        BaseFactor::Group { .. } => return, // Groups not yet supported in repetitions
     };
 
     match factor.repetition {
@@ -839,6 +964,185 @@ mod tests {
                         // wrapper should be promoted, so we shouldn't see <wrapper>
                         assert!(!xml_string.contains("<wrapper"), "Should not contain wrapper element");
                         assert!(xml_string.contains("prefix"), "Should contain 'prefix'");
+                    }
+                    Err(e) => panic!("Failed to build XML tree: {}", e),
+                }
+            }
+            Err(e) => panic!("Parse failed: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_char_class_range() {
+        // Test character class with range like [a-z]
+        let ixml = r#"letter: ['a'-'z']."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("letter").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        // Test lowercase letters
+        for ch in ['a', 'm', 'z'] {
+            let input_str = ch.to_string();
+            let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+            let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+            assert!(result.is_ok(), "Failed to parse '{}'", ch);
+        }
+
+        // Test that uppercase letters don't match
+        let input_str = "A";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_err(), "Should not parse uppercase 'A'");
+    }
+
+    #[test]
+    fn test_char_class_individual_chars() {
+        // Test character class with individual characters like ['a', 'e', 'i']
+        let ixml = r#"vowel: ['a', 'e', 'i', 'o', 'u']."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("vowel").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        // Test vowels
+        for ch in ['a', 'e', 'i', 'o', 'u'] {
+            let input_str = ch.to_string();
+            let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+            let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+            assert!(result.is_ok(), "Failed to parse vowel '{}'", ch);
+        }
+
+        // Test that consonants don't match
+        let input_str = "b";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_err(), "Should not parse consonant 'b'");
+    }
+
+    #[test]
+    fn test_char_class_negated() {
+        // Test negated character class like ~['0'-'9']
+        let ixml = r#"nondigit: ~['0'-'9']."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("nondigit").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        // Test that letters match
+        for ch in ['a', 'x', 'Z'] {
+            let input_str = ch.to_string();
+            let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+            let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+            assert!(result.is_ok(), "Failed to parse non-digit '{}'", ch);
+        }
+
+        // Test that digits don't match
+        for ch in ['0', '5', '9'] {
+            let input_str = ch.to_string();
+            let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+            let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+            assert!(result.is_err(), "Should not parse digit '{}'", ch);
+        }
+    }
+
+    #[test]
+    fn test_char_class_unicode_category() {
+        // Test Unicode category like [L] for letters
+        let ixml = r#"letter: [L]."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("letter").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        // Test that letters match
+        for ch in ['a', 'Z', 'ñ'] {
+            let input_str = ch.to_string();
+            let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+            let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+            assert!(result.is_ok(), "Failed to parse letter '{}'", ch);
+        }
+
+        // Test that numbers don't match
+        let input_str = "5";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_err(), "Should not parse digit '5'");
+    }
+
+    #[test]
+    fn test_char_class_with_repetition() {
+        // Test character class with repetition like ['a'-'z']+
+        let ixml = r#"word: ['a'-'z']+."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("word").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        // Parse "hello"
+        let input_str = "hello";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+
+        assert!(result.is_ok(), "Failed to parse 'hello'");
+
+        // Generate XML
+        if let Ok(trees) = result {
+            let forest = build_xml_forest(&ast);
+            let xml_result = forest.eval(&trees);
+
+            match xml_result {
+                Ok(tree) => {
+                    let xml_string = tree.to_xml();
+                    println!("Character class repetition XML: {}", xml_string);
+                    // Check that all characters are present (will be wrapped in <repeat> tags)
+                    assert!(xml_string.contains("h"));
+                    assert!(xml_string.contains("e"));
+                    assert!(xml_string.contains("l"));
+                    assert!(xml_string.contains("o"));
+                    assert!(xml_string.contains("<word>"));
+                    assert!(xml_string.contains("</word>"));
+                }
+                Err(e) => panic!("Failed to build XML tree: {}", e),
+            }
+        }
+    }
+
+    #[test]
+    fn test_char_class_xml_generation() {
+        // Test that character classes generate proper XML
+        let ixml = r#"digit: ['0'-'9']."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("digit").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        let input_str = "7";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+
+        match result {
+            Ok(trees) => {
+                let forest = build_xml_forest(&ast);
+                let xml_result = forest.eval(&trees);
+
+                match xml_result {
+                    Ok(tree) => {
+                        let xml_string = tree.to_xml();
+                        println!("Character class XML: {}", xml_string);
+                        assert_eq!(xml_string, "<digit>7</digit>");
                     }
                     Err(e) => panic!("Failed to build XML tree: {}", e),
                 }
