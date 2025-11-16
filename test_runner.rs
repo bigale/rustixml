@@ -11,6 +11,7 @@ fn main() {
         "charclass-simple",
         "charclass",
         "group-simple",
+        "group",
         "comma-test",
     ];
 

@@ -383,6 +383,13 @@ let ixml = r#"greeting: "hello"."#;
 - ✅ **All marks work** - Attribute, hidden, and promoted marks still function correctly
 - **Test Results**: **5/5 integration tests passing** + **20/20 runtime_parser unit tests passing!**
 
+**Group Repetition Counter Synchronization Fix Complete! ✅**
+- ✅ **Root cause identified** - `GROUP_COUNTER` was being incremented twice for groups with repetitions
+- ✅ **Fixed data flow** - `get_factor_symbol` now returns both base_name and symbol_name
+- ✅ **Eliminated double-counting** - `register_repetition_actions` receives base_name as parameter
+- ✅ **Consistent group IDs** - Grammar rules and semantic actions now use matching group IDs
+- **Test Results**: **6/6 integration tests passing!** (added "group" test with `("a" | "b")+`)
+
 ### Next Steps
 
 **For Full Conformance Testing:**

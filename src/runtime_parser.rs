@@ -445,11 +445,13 @@ fn register_rule_actions(
     for seq in &rule.alternatives.alts {
         // Build the list of symbols for this production
         let mut symbols = Vec::new();
+        let mut base_names = Vec::new();  // Track base names for repetition action registration
         let mut factor_marks = Vec::new();
 
         for factor in &seq.factors {
-            let (_builder_placeholder, symbol_name) = get_factor_symbol(factor);
+            let (base_name, symbol_name) = get_factor_symbol(factor);
             symbols.push(symbol_name);
+            base_names.push(base_name);
 
             // Extract mark from nonterminal factors
             let factor_mark = match &factor.base {
@@ -564,8 +566,8 @@ fn register_rule_actions(
         });
 
         // Also register actions for any helper rules we create for repetition
-        for factor in &seq.factors {
-            register_repetition_actions(forest, factor, &mut registered);
+        for (factor, base_name) in seq.factors.iter().zip(base_names.iter()) {
+            register_repetition_actions(forest, factor, base_name, &mut registered);
         }
     }
 }
@@ -741,7 +743,8 @@ fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> 
 }
 
 /// Get the symbol name for a factor (matches the logic in ast_to_earlgrey)
-fn get_factor_symbol(factor: &Factor) -> ((), String) {
+/// Returns (base_name, symbol_name) where base_name is without repetition suffix
+fn get_factor_symbol(factor: &Factor) -> (String, String) {
     let base_name = match &factor.base {
         BaseFactor::Literal { value, insertion: _ } => {
             if value.len() == 1 {
@@ -763,45 +766,33 @@ fn get_factor_symbol(factor: &Factor) -> ((), String) {
             }
         }
         BaseFactor::Group { .. } => {
-            // Generate the same group ID that was assigned during conversion
+            // Use the global counter to match convert_factor
             let group_id = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
             format!("group_{}", group_id)
         }
     };
 
     // Handle repetition by using the helper rule name
-    match factor.repetition {
-        Repetition::None => ((), base_name),
-        Repetition::OneOrMore => ((), format!("{}_plus", base_name)),
-        Repetition::ZeroOrMore => ((), format!("{}_star", base_name)),
-        Repetition::Optional => ((), format!("{}_opt", base_name)),
-    }
+    let symbol_name = match factor.repetition {
+        Repetition::None => base_name.clone(),
+        Repetition::OneOrMore => format!("{}_plus", base_name),
+        Repetition::ZeroOrMore => format!("{}_star", base_name),
+        Repetition::Optional => format!("{}_opt", base_name),
+    };
+
+    (base_name, symbol_name)
 }
 
 /// Register actions for repetition helper rules
+/// base_name is the symbol name without repetition suffix (passed from get_factor_symbol)
 fn register_repetition_actions(
     forest: &mut EarleyForest<'static, XmlNode>,
     factor: &Factor,
+    base_name: &str,
     registered: &mut std::collections::HashSet<String>,
 ) {
-    let base_name = match &factor.base {
-        BaseFactor::Literal { value, insertion: _ } => {
-            format!("lit_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
-        }
-        BaseFactor::Nonterminal { name, mark: _ } => name.clone(),
-        BaseFactor::CharClass { content, negated } => {
-            if *negated {
-                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
-            } else {
-                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
-            }
-        }
-        BaseFactor::Group { .. } => {
-            // Generate the same group ID
-            let group_id = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
-            format!("group_{}", group_id)
-        }
-    };
+    // Use the passed base_name directly instead of recalculating it
+    // This ensures we don't increment GROUP_COUNTER a second time for groups
 
     match factor.repetition {
         Repetition::OneOrMore => {
