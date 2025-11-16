@@ -31,6 +31,20 @@ pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> 
         });
     }
 
+    // Also collect and define character class terminals
+    let mut charclasses_seen = std::collections::HashSet::new();
+    collect_charclasses(grammar, &mut charclasses_seen);
+
+    for (content, negated) in charclasses_seen {
+        let class_name = if negated {
+            format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+        } else {
+            format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+        };
+        let predicate = parse_char_class(&content, negated);
+        builder = builder.terminal(&class_name, predicate);
+    }
+
     // Second pass: declare all nonterminals (including multi-char literal sequences)
     for rule in &grammar.rules {
         builder = builder.nonterm(&rule.name);
@@ -74,6 +88,34 @@ fn collect_chars_from_factor(factor: &Factor, chars: &mut std::collections::Hash
             collect_chars_from_alternatives(alternatives, chars);
         }
         _ => {}, // Nonterminal and CharClass don't contain literal chars
+    }
+}
+
+/// Collect all unique character classes from the grammar
+fn collect_charclasses(grammar: &IxmlGrammar, charclasses: &mut std::collections::HashSet<(String, bool)>) {
+    for rule in &grammar.rules {
+        collect_charclasses_from_alternatives(&rule.alternatives, charclasses);
+    }
+}
+
+fn collect_charclasses_from_alternatives(alts: &Alternatives, charclasses: &mut std::collections::HashSet<(String, bool)>) {
+    for seq in &alts.alts {
+        for factor in &seq.factors {
+            collect_charclasses_from_factor(factor, charclasses);
+        }
+    }
+}
+
+fn collect_charclasses_from_factor(factor: &Factor, charclasses: &mut std::collections::HashSet<(String, bool)>) {
+    match &factor.base {
+        BaseFactor::CharClass { content, negated } => {
+            charclasses.insert((content.clone(), *negated));
+        }
+        BaseFactor::Group { alternatives } => {
+            // Recurse into group alternatives
+            collect_charclasses_from_alternatives(alternatives, charclasses);
+        }
+        _ => {}, // Literal and Nonterminal don't contain character classes
     }
 }
 
@@ -293,19 +335,13 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
             (builder, name.clone())
         }
         BaseFactor::CharClass { content, negated } => {
-            // Create a terminal for this character class
+            // Terminal was already defined in first pass, just return the name
             let class_name = if *negated {
                 format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
             } else {
                 format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
             };
-
-            // Parse the character class and create a predicate
-            let predicate = parse_char_class(content, *negated);
-
-            // Define the terminal with the predicate
-            let b = builder.terminal(&class_name, predicate);
-            (b, class_name)
+            (builder, class_name)
         }
         BaseFactor::Group { alternatives } => {
             // Generate a unique name for this group

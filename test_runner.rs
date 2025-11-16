@@ -21,9 +21,7 @@ fn main() {
         "optional-empty",   // Test ? with empty input
         "optional-simple",  // Test ? with one character
         "optional-test",    // Test ? with space (comma-separated sequence)
-        // Known issues - character classes with * or ? don't work yet:
-        // "charclass-star-simple",  // TODO: Fix charclass with *
-        // "star-test",              // TODO: Fix charclass with *
+        "star-test",        // Test * with character class ["a"-"z"] - FIXED!
     ];
 
     println!("Running iXML Conformance Tests\n");
