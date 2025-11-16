@@ -10,6 +10,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 // Global counter for generating unique group IDs
 static GROUP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// Helper function to normalize character class content by removing quote characters
+/// Supports both single quotes (') and double quotes (") per iXML spec flexibility
+fn normalize_charclass_content(content: &str) -> String {
+    content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", "")
+}
+
 /// Convert an iXML AST to an Earlgrey grammar
 ///
 /// This is the "translator" that takes our parsed iXML grammar and converts it
@@ -37,9 +43,9 @@ pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> 
 
     for (content, negated) in charclasses_seen {
         let class_name = if negated {
-            format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
+            format!("charclass_neg_{}", normalize_charclass_content(&content))
         } else {
-            format!("charclass_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
+            format!("charclass_{}", normalize_charclass_content(&content))
         };
         let predicate = parse_char_class(&content, negated);
         builder = builder.terminal(&class_name, predicate);
@@ -156,9 +162,9 @@ fn collect_repetition_from_factor(factor: &Factor, nonterminals: &mut std::colle
         BaseFactor::CharClass { content, negated } => {
             // Character classes become terminals, use the same naming convention
             if *negated {
-                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
+                format!("charclass_neg_{}", normalize_charclass_content(content))
             } else {
-                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
+                format!("charclass_{}", normalize_charclass_content(content))
             }
         }
         BaseFactor::Group { alternatives } => {
@@ -403,9 +409,9 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
         BaseFactor::CharClass { content, negated } => {
             // Terminal was already defined in first pass, just return the name
             let class_name = if *negated {
-                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
+                format!("charclass_neg_{}", normalize_charclass_content(content))
             } else {
-                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
+                format!("charclass_{}", normalize_charclass_content(content))
             };
             (builder, class_name)
         }
@@ -831,9 +837,9 @@ fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> 
             BaseFactor::Nonterminal { name, .. } => name.clone(),
             BaseFactor::CharClass { content, negated } => {
                 if *negated {
-                    format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
+                    format!("charclass_neg_{}", normalize_charclass_content(content))
                 } else {
-                    format!("charclass_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
+                    format!("charclass_{}", normalize_charclass_content(content))
                 }
             }
             BaseFactor::Group { .. } => {
@@ -875,9 +881,9 @@ fn get_factor_symbol(factor: &Factor) -> (String, String) {
         BaseFactor::CharClass { content, negated } => {
             // Use the same naming as in convert_factor
             if *negated {
-                format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
+                format!("charclass_neg_{}", normalize_charclass_content(content))
             } else {
-                format!("charclass_{}", content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", ""))
+                format!("charclass_{}", normalize_charclass_content(content))
             }
         }
         BaseFactor::Group { .. } => {

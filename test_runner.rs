@@ -22,6 +22,9 @@ fn main() {
         "optional-simple",  // Test ? with one character
         "optional-test",    // Test ? with space (comma-separated sequence)
         "star-test",        // Test * with character class ["a"-"z"] - FIXED!
+        "mixed-quotes-single",  // Test charclass with single quotes ['a'-'z']
+        "mixed-quotes-double",  // Test charclass with double quotes ["a"-"z"]
+        "mixed-quotes-mixed",   // Test charclass with mixed quotes ['a"-"z']
     ];
 
     println!("Running iXML Conformance Tests\n");
