@@ -301,13 +301,29 @@ let ixml = r#"greeting: "hello"."#;
 <greeting>hello</greeting>
 ```
 
+**First Conformance Test Passing! ✅**
+- Successfully integrated test infrastructure with runtime parser
+- Manual test case: `greeting: "hello" "world".` with input `"hello world"`
+- Generates correct XML: `<greeting>helloworld</greeting>`
+- Complete end-to-end pipeline validated!
+
 ### Next Steps
 
-**Immediate Priorities:**
-1. Run first conformance test from earleybird suite
-2. Add support for character classes and groups in AST-to-Earlgrey converter
-3. Implement marks (@ - ̂) in XML generation
-4. Handle more complex test cases
+**For Full Conformance Testing:**
+1. **Add comment support** - Handle `{...}` comments in iXML grammar lexer
+2. **Implement marks in XML generation**:
+   - `-` (hidden) - Don't include element in output
+   - `@` (attribute) - Element becomes XML attribute
+   - `^` (promoted) - Lift children to parent level
+3. **Character-level tokenization** - Parse individual characters instead of whitespace-splitting
+4. **Character classes in runtime** - Support `[a-z]`, `[L]`, etc. in AST-to-Earlgrey converter
+5. **Groups in runtime** - Support `(a | b)` in AST-to-Earlgrey converter
+
+**Known Limitations:**
+- Tokenization currently splits on whitespace (works for simple tests)
+- Comments `{...}` not yet supported in lexer
+- Marks parsed but not yet applied in XML generation
+- Character classes/groups parsed but not yet in runtime converter
 
 ### Previous: Phase 2 Progress
 

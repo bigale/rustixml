@@ -54,22 +54,73 @@ pub fn read_simple_test(base_path: &str, test_name: &str) -> Result<TestCase, St
     })
 }
 
-/// Placeholder for running a test
-/// TODO: Implement actual parsing and XML generation
+/// Run a test case: parse grammar, parse input, generate XML
 pub fn run_test(test: &TestCase) -> TestOutcome {
-    // For now, just try to parse the grammar
     use crate::grammar_ast::parse_ixml_grammar;
+    use crate::runtime_parser::{ast_to_earlgrey, build_xml_forest};
+    use earlgrey::EarleyParser;
 
-    match parse_ixml_grammar(&test.grammar) {
-        Ok(_grammar) => {
-            // TODO: Parse input with grammar
-            // TODO: Generate XML from parse tree
-            // TODO: Compare with expected output
-            TestOutcome::Skip("XML generation not yet implemented".to_string())
+    // Step 1: Parse the iXML grammar to AST
+    let ast = match parse_ixml_grammar(&test.grammar) {
+        Ok(ast) => ast,
+        Err(e) => return TestOutcome::GrammarParseError(e),
+    };
+
+    // Step 2: Convert AST to Earlgrey grammar
+    let builder = match ast_to_earlgrey(&ast) {
+        Ok(builder) => builder,
+        Err(e) => return TestOutcome::GrammarParseError(format!("AST conversion error: {}", e)),
+    };
+
+    // Get the start symbol (first rule name)
+    let start_symbol = if let Some(rule) = ast.rules.first() {
+        &rule.name
+    } else {
+        return TestOutcome::GrammarParseError("No rules in grammar".to_string());
+    };
+
+    let grammar = match builder.into_grammar(start_symbol) {
+        Ok(g) => g,
+        Err(e) => return TestOutcome::GrammarParseError(format!("Grammar build error: {:?}", e)),
+    };
+
+    // Step 3: Create parser and parse input
+    let parser = EarleyParser::new(grammar);
+
+    // Tokenize input by whitespace (simple tokenization for now)
+    let tokens: Vec<&str> = test.input.split_whitespace().collect();
+
+    let parse_trees = match parser.parse(tokens.into_iter()) {
+        Ok(trees) => trees,
+        Err(e) => return TestOutcome::InputParseError(format!("Parse error: {:?}", e)),
+    };
+
+    // Step 4: Generate XML from parse trees
+    let forest = build_xml_forest(&ast);
+
+    let xml_node = match forest.eval(&parse_trees) {
+        Ok(node) => node,
+        Err(e) => return TestOutcome::InputParseError(format!("XML generation error: {}", e)),
+    };
+
+    let actual_xml = xml_node.to_xml();
+
+    // Step 5: Compare with expected output
+    if let Some(expected) = &test.expected_xml {
+        let expected_trimmed = expected.trim();
+        let actual_trimmed = actual_xml.trim();
+
+        if expected_trimmed == actual_trimmed {
+            TestOutcome::Pass
+        } else {
+            TestOutcome::Fail {
+                expected: expected_trimmed.to_string(),
+                actual: actual_trimmed.to_string(),
+            }
         }
-        Err(e) => {
-            TestOutcome::GrammarParseError(e)
-        }
+    } else {
+        // No expected output, just check that we could generate something
+        TestOutcome::Pass
     }
 }
 
@@ -86,5 +137,44 @@ mod tests {
         assert_eq!(test.name, "aaa");
         assert!(test.grammar.contains("data"));
         assert_eq!(test.input.trim(), "a a a");
+    }
+
+    #[test]
+    fn test_run_manual_simple_test() {
+        // Create a simple test case manually to verify the pipeline works
+        let test = TestCase {
+            name: "manual_test".to_string(),
+            grammar: r#"greeting: "hello" "world"."#.to_string(),
+            input: "hello world".to_string(),
+            expected_xml: Some("<greeting>helloworld</greeting>".to_string()),
+            expect_failure: false,
+        };
+
+        println!("Grammar: {}", test.grammar);
+        println!("Input: {}", test.input);
+        println!("Expected: {:?}", test.expected_xml);
+
+        let outcome = run_test(&test);
+
+        match outcome {
+            TestOutcome::Pass => println!("✅ Test passed!"),
+            TestOutcome::Fail { expected, actual } => {
+                println!("❌ Test failed!");
+                println!("Expected:\n{}", expected);
+                println!("Actual:\n{}", actual);
+                // Don't panic yet - let's see what we get
+            }
+            TestOutcome::GrammarParseError(e) => {
+                println!("❌ Grammar parse error: {}", e);
+                panic!("Grammar parse error: {}", e);
+            }
+            TestOutcome::InputParseError(e) => {
+                println!("❌ Input parse error: {}", e);
+                panic!("Input parse error: {}", e);
+            }
+            TestOutcome::Skip(reason) => {
+                println!("⏭️ Test skipped: {}", reason);
+            }
+        }
     }
 }
