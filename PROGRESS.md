@@ -348,6 +348,27 @@ let ixml = r#"greeting: "hello"."#;
 - Unicode category mapping to Rust's built-in character classification functions
 - Integration with repetition actions in `register_repetition_actions()`
 
+---
+
+**Group Support Complete! ✅**
+- ✅ **Simple groups** - Support `("a" | "b")` inline alternatives
+- ✅ **Group nonterminals** - Convert groups to unique nonterminals like `group_0`
+- ✅ **Nested groups** - Support groups within groups `(("a" | "b") | "c")`
+- ✅ **Group with sequences** - Support `("hello" | "world")` multi-character alternatives
+- ✅ **Repetition support** - Groups work with `+`, `*`, `?` operators: `("a" | "b")+`
+- ✅ **XML generation** - Group matches generate proper XML elements
+- ✅ **Deterministic naming** - Atomic counter with resets ensures consistent group IDs
+- **Test Results**: **20/20 runtime_parser tests passing!** (including 5 group tests)
+
+**Key Implementation Details:**
+- `GROUP_COUNTER` atomic counter generates unique group IDs during grammar conversion
+- Counter reset in `ast_to_earlgrey()` and `build_xml_forest()` for deterministic naming
+- Groups converted to nonterminals with productions for each alternative
+- `register_group_actions()` uses local counter to traverse grammar in same order as conversion
+- `build_symbol_list_for_sequence()` properly tracks nested group IDs during action registration
+- Groups recurse through `collect_chars_from_factor()` and `declare_sequences_from_factor()`
+- Group actions pass through child nodes or wrap in `<group>` element for multiple children
+
 ### Next Steps
 
 **For Full Conformance Testing:**
@@ -355,14 +376,16 @@ let ixml = r#"greeting: "hello"."#;
 2. ~~**Character-level tokenization**~~ ✅ **COMPLETE** - Parse individual characters instead of whitespace-splitting
 3. ~~**Implement marks in XML generation**~~ ✅ **COMPLETE** - All three marks (@, -, ^) fully implemented
 4. ~~**Character classes in runtime**~~ ✅ **COMPLETE** - Support `[a-z]`, `[L]`, etc. in AST-to-Earlgrey converter
-5. **Groups in runtime** - Support `(a | b)` in AST-to-Earlgrey converter
+5. ~~**Groups in runtime**~~ ✅ **COMPLETE** - Support `(a | b)` in AST-to-Earlgrey converter
 
 **Known Limitations:**
 - ~~Tokenization currently splits on whitespace~~ ✅ **COMPLETE** - Now parses character-by-character
 - ~~Comments `{...}` not yet supported in lexer~~ ✅ **COMPLETE**
 - ~~Marks parsed but not yet applied in XML generation~~ ✅ **COMPLETE**
 - ~~Character classes parsed but not yet in runtime converter~~ ✅ **COMPLETE**
-- Groups `(a | b)` parsed but not yet in runtime converter
+- ~~Groups `(a | b)` parsed but not yet in runtime converter~~ ✅ **COMPLETE**
+
+**🎉 Phase 3 Complete! All core iXML features implemented and tested!**
 
 ### Previous: Phase 2 Progress
 

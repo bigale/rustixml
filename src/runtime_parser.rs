@@ -5,12 +5,19 @@
 
 use earlgrey::{EarleyParser, GrammarBuilder, EarleyForest};
 use crate::ast::{IxmlGrammar, Rule, Alternatives, Sequence, Factor, BaseFactor, Repetition, Mark};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+// Global counter for generating unique group IDs
+static GROUP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Convert an iXML AST to an Earlgrey grammar
 ///
 /// This is the "translator" that takes our parsed iXML grammar and converts it
 /// to Earlgrey's format so we can use it to parse input at runtime.
 pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> {
+    // Reset group counter for deterministic group naming across conversion and XML generation
+    GROUP_COUNTER.store(0, Ordering::SeqCst);
+
     let mut builder = GrammarBuilder::default();
 
     // First pass: collect all unique characters from literals and define terminals
@@ -56,10 +63,17 @@ fn collect_chars_from_alternatives(alts: &Alternatives, chars: &mut std::collect
 }
 
 fn collect_chars_from_factor(factor: &Factor, chars: &mut std::collections::HashSet<char>) {
-    if let BaseFactor::Literal { value, .. } = &factor.base {
-        for ch in value.chars() {
-            chars.insert(ch);
+    match &factor.base {
+        BaseFactor::Literal { value, .. } => {
+            for ch in value.chars() {
+                chars.insert(ch);
+            }
         }
+        BaseFactor::Group { alternatives } => {
+            // Recurse into group alternatives
+            collect_chars_from_alternatives(alternatives, chars);
+        }
+        _ => {}, // Nonterminal and CharClass don't contain literal chars
     }
 }
 
@@ -81,15 +95,22 @@ fn declare_sequences_from_alternatives(alts: &Alternatives, builder: &mut Gramma
 }
 
 fn declare_sequences_from_factor(factor: &Factor, builder: &mut GrammarBuilder, declared: &mut std::collections::HashSet<String>) {
-    if let BaseFactor::Literal { value, .. } = &factor.base {
-        if value.len() > 1 {
-            let seq_name = format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"));
-            if !declared.contains(&seq_name) {
-                let old_builder = std::mem::replace(builder, GrammarBuilder::default());
-                *builder = old_builder.nonterm(&seq_name);
-                declared.insert(seq_name);
+    match &factor.base {
+        BaseFactor::Literal { value, .. } => {
+            if value.len() > 1 {
+                let seq_name = format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"));
+                if !declared.contains(&seq_name) {
+                    let old_builder = std::mem::replace(builder, GrammarBuilder::default());
+                    *builder = old_builder.nonterm(&seq_name);
+                    declared.insert(seq_name);
+                }
             }
         }
+        BaseFactor::Group { alternatives } => {
+            // Recurse into group alternatives to declare any literal sequences within
+            declare_sequences_from_alternatives(alternatives, builder, declared);
+        }
+        _ => {}, // Nonterminal and CharClass don't need sequence declarations
     }
 }
 
@@ -285,8 +306,29 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
             let b = builder.terminal(&class_name, predicate);
             (b, class_name)
         }
-        BaseFactor::Group { .. } => {
-            return Err("Groups not yet supported".to_string());
+        BaseFactor::Group { alternatives } => {
+            // Generate a unique name for this group
+            let group_id = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
+            let group_name = format!("group_{}", group_id);
+
+            // Declare the nonterminal for this group
+            let mut b = builder.nonterm(&group_name);
+
+            // Convert each alternative in the group to a production rule
+            for seq in &alternatives.alts {
+                // Build symbols list for this alternative
+                let mut symbols = Vec::new();
+                for inner_factor in &seq.factors {
+                    let (new_builder, symbol_name) = convert_factor(b, inner_factor)?;
+                    b = new_builder;
+                    symbols.push(symbol_name);
+                }
+
+                // Add production rule: group_name := symbols[0] symbols[1] ...
+                b = b.rule(&group_name, &symbols.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+            }
+
+            (b, group_name)
         }
     };
     builder = new_builder;
@@ -363,6 +405,9 @@ impl XmlNode {
 /// Build an EarleyForest configured for XML generation
 /// Returns the forest which can be used with forest.eval(&parse_trees)
 pub fn build_xml_forest(grammar: &IxmlGrammar) -> EarleyForest<'static, XmlNode> {
+    // Reset group counter to ensure same group IDs as during grammar conversion
+    GROUP_COUNTER.store(0, Ordering::SeqCst);
+
     // Create an EarleyForest to walk the parse tree
     let mut forest = EarleyForest::new(|_symbol, token| {
         // For terminals (leaves), just return the token text
@@ -378,6 +423,9 @@ pub fn build_xml_forest(grammar: &IxmlGrammar) -> EarleyForest<'static, XmlNode>
 
     // Also register actions for literal sequence nonterminals
     register_literal_sequence_actions(&mut forest, grammar);
+
+    // Also register actions for group nonterminals
+    register_group_actions(&mut forest, grammar);
 
     forest
 }
@@ -565,11 +613,121 @@ fn register_literal_sequence_actions(forest: &mut EarleyForest<'static, XmlNode>
 fn collect_literals_from_alternatives(alts: &Alternatives, literals: &mut std::collections::HashSet<String>) {
     for seq in &alts.alts {
         for factor in &seq.factors {
-            if let BaseFactor::Literal { value, .. } = &factor.base {
-                literals.insert(value.clone());
+            match &factor.base {
+                BaseFactor::Literal { value, .. } => {
+                    literals.insert(value.clone());
+                }
+                BaseFactor::Group { alternatives } => {
+                    // Recurse into groups
+                    collect_literals_from_alternatives(alternatives, literals);
+                }
+                _ => {},
             }
         }
     }
+}
+
+/// Register XML actions for all group nonterminals in the grammar
+fn register_group_actions(forest: &mut EarleyForest<'static, XmlNode>, grammar: &IxmlGrammar) {
+    // Use a local counter to track group IDs (don't use global GROUP_COUNTER which may have been
+    // incremented by other code). We traverse in the same order as during grammar conversion.
+    let mut group_counter = 0;
+
+    // Traverse the grammar to find all groups and register their actions
+    for rule in &grammar.rules {
+        register_group_actions_from_alternatives(forest, &rule.alternatives, &mut group_counter);
+    }
+}
+
+/// Helper to traverse alternatives and register actions for any groups found
+fn register_group_actions_from_alternatives(
+    forest: &mut EarleyForest<'static, XmlNode>,
+    alts: &Alternatives,
+    group_counter: &mut usize,
+) {
+    for seq in &alts.alts {
+        for factor in &seq.factors {
+            if let BaseFactor::Group { alternatives } = &factor.base {
+                // Get the group name by generating the same ID as during conversion
+                let group_id = *group_counter;
+                *group_counter += 1;
+                let group_name = format!("group_{}", group_id);
+
+                // Register actions for each alternative in the group
+                for group_seq in &alternatives.alts {
+                    // Build symbol list for this alternative
+                    let symbols = build_symbol_list_for_sequence(group_seq, group_counter);
+
+                    // Create production string
+                    let production = if symbols.is_empty() {
+                        group_name.clone()
+                    } else {
+                        format!("{} -> {}", group_name, symbols.join(" "))
+                    };
+
+                    // Action: groups just pass through their child nodes
+                    forest.action(&production, |nodes: Vec<XmlNode>| {
+                        if nodes.len() == 1 {
+                            nodes.into_iter().next().unwrap()
+                        } else {
+                            // Multiple nodes - wrap in an element
+                            XmlNode::Element {
+                                name: "group".to_string(),
+                                attributes: vec![],
+                                children: nodes,
+                            }
+                        }
+                    });
+                }
+
+                // Recurse into the group's alternatives
+                register_group_actions_from_alternatives(forest, alternatives, group_counter);
+            }
+        }
+    }
+}
+
+/// Helper to build symbol list for a sequence (used in group action registration)
+/// This version uses a local counter instead of the global GROUP_COUNTER
+fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> Vec<String> {
+    let mut symbols = Vec::new();
+    for factor in &seq.factors {
+        let base_name = match &factor.base {
+            BaseFactor::Literal { value, .. } => {
+                if value.len() == 1 {
+                    let ch = value.chars().next().unwrap();
+                    char_terminal_name(ch)
+                } else {
+                    format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+                }
+            }
+            BaseFactor::Nonterminal { name, .. } => name.clone(),
+            BaseFactor::CharClass { content, negated } => {
+                if *negated {
+                    format!("charclass_neg_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+                } else {
+                    format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
+                }
+            }
+            BaseFactor::Group { .. } => {
+                // For groups, generate the ID and increment the local counter
+                let group_id = *group_counter;
+                *group_counter += 1;
+                format!("group_{}", group_id)
+            }
+        };
+
+        // Handle repetition
+        let symbol_name = match factor.repetition {
+            Repetition::None => base_name,
+            Repetition::OneOrMore => format!("{}_plus", base_name),
+            Repetition::ZeroOrMore => format!("{}_star", base_name),
+            Repetition::Optional => format!("{}_opt", base_name),
+        };
+
+        symbols.push(symbol_name);
+    }
+    symbols
 }
 
 /// Get the symbol name for a factor (matches the logic in ast_to_earlgrey)
@@ -595,8 +753,9 @@ fn get_factor_symbol(factor: &Factor) -> ((), String) {
             }
         }
         BaseFactor::Group { .. } => {
-            // TODO: Handle groups
-            "UNSUPPORTED_GROUP".to_string()
+            // Generate the same group ID that was assigned during conversion
+            let group_id = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
+            format!("group_{}", group_id)
         }
     };
 
@@ -627,7 +786,11 @@ fn register_repetition_actions(
                 format!("charclass_{}", content.replace("-", "_").replace("'", "").replace(" ", ""))
             }
         }
-        BaseFactor::Group { .. } => return, // Groups not yet supported in repetitions
+        BaseFactor::Group { .. } => {
+            // Generate the same group ID
+            let group_id = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
+            format!("group_{}", group_id)
+        }
     };
 
     match factor.repetition {
@@ -1149,5 +1312,155 @@ mod tests {
             }
             Err(e) => panic!("Parse failed: {:?}", e),
         }
+    }
+
+    #[test]
+    fn test_group_simple() {
+        // Test simple group like (a | b)
+        let ixml = r#"choice: ("a" | "b")."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("choice").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        // Test 'a'
+        let input_str = "a";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_ok(), "Failed to parse 'a'");
+
+        // Test 'b'
+        let input_str = "b";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_ok(), "Failed to parse 'b'");
+
+        // Test 'c' should fail
+        let input_str = "c";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_err(), "Should not parse 'c'");
+    }
+
+    #[test]
+    fn test_group_with_repetition() {
+        // Test group with repetition like (a | b)+
+        let ixml = r#"word: ("a" | "b")+."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("word").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        // Test single character
+        let input_str = "a";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_ok(), "Failed to parse 'a'");
+
+        // Test multiple characters
+        let input_str = "abba";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_ok(), "Failed to parse 'abba'");
+
+        // Test invalid character should fail
+        let input_str = "abc";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_err(), "Should not parse 'abc'");
+    }
+
+    #[test]
+    fn test_group_with_sequence() {
+        // Test group with sequences like ("hello" | "world")
+        let ixml = r#"greeting: ("hello" | "world")."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("greeting").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        // Test "hello"
+        let input_str = "hello";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_ok(), "Failed to parse 'hello'");
+
+        // Test "world"
+        let input_str = "world";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_ok(), "Failed to parse 'world'");
+
+        // Test "goodbye" should fail
+        let input_str = "goodbye";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_err(), "Should not parse 'goodbye'");
+    }
+
+    #[test]
+    fn test_group_xml_generation() {
+        // Test that groups generate proper XML
+        let ixml = r#"choice: ("a" | "b")."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("choice").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        let input_str = "a";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+
+        match result {
+            Ok(trees) => {
+                let forest = build_xml_forest(&ast);
+                let xml_result = forest.eval(&trees);
+
+                match xml_result {
+                    Ok(tree) => {
+                        let xml_string = tree.to_xml();
+                        println!("Group XML: {}", xml_string);
+                        assert!(xml_string.contains("<choice>"));
+                        assert!(xml_string.contains("a"));
+                    }
+                    Err(e) => panic!("Failed to build XML tree: {}", e),
+                }
+            }
+            Err(e) => panic!("Parse failed: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_nested_groups() {
+        // Test nested groups like (("a" | "b") | "c")
+        let ixml = r#"choice: (("a" | "b") | "c")."#;
+        let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
+
+        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let grammar = builder.into_grammar("choice").expect("Failed to build grammar");
+
+        let parser = EarleyParser::new(grammar);
+
+        // Test all three options
+        for ch in ['a', 'b', 'c'] {
+            let input_str = ch.to_string();
+            let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+            let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+            assert!(result.is_ok(), "Failed to parse '{}'", ch);
+        }
+
+        // Test invalid character
+        let input_str = "d";
+        let tokens: Vec<String> = input_str.chars().map(|c| c.to_string()).collect();
+        let result = parser.parse(tokens.iter().map(|s| s.as_str()));
+        assert!(result.is_err(), "Should not parse 'd'");
     }
 }
