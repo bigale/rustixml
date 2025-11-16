@@ -44,7 +44,7 @@ impl Lexer {
         let mut tokens = Vec::new();
 
         while self.pos < self.input.len() {
-            self.skip_whitespace();
+            self.skip_whitespace_and_comments()?;
 
             if self.pos >= self.input.len() {
                 break;
@@ -56,6 +56,58 @@ impl Lexer {
 
         tokens.push(Token::Eof);
         Ok(tokens)
+    }
+
+    fn skip_whitespace_and_comments(&mut self) -> Result<(), String> {
+        loop {
+            // Skip whitespace
+            while self.pos < self.input.len() && self.input[self.pos].is_whitespace() {
+                self.pos += 1;
+            }
+
+            // Check for comment start
+            if self.peek() == Some('{') {
+                self.skip_comment()?;
+            } else {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn skip_comment(&mut self) -> Result<(), String> {
+        // iXML comments are {like this} and can be nested
+        if self.peek() != Some('{') {
+            return Ok(());
+        }
+
+        self.advance(); // consume '{'
+        let mut depth = 1;
+
+        while depth > 0 && self.pos < self.input.len() {
+            match self.peek() {
+                Some('{') => {
+                    depth += 1;
+                    self.advance();
+                }
+                Some('}') => {
+                    depth -= 1;
+                    self.advance();
+                }
+                Some(_) => {
+                    self.advance();
+                }
+                None => {
+                    return Err("Unclosed comment".to_string());
+                }
+            }
+        }
+
+        if depth > 0 {
+            return Err("Unclosed comment".to_string());
+        }
+
+        Ok(())
     }
 
     fn skip_whitespace(&mut self) {
@@ -254,5 +306,49 @@ mod tests {
         assert_eq!(tokens[1], Token::Colon);
         assert_eq!(tokens[2], Token::Ident("body".to_string()));
         assert_eq!(tokens[3], Token::Period);
+    }
+
+    #[test]
+    fn test_simple_comment() {
+        let mut lexer = Lexer::new(r#"{This is a comment} rule: "hello"."#);
+        let tokens = lexer.tokenize().unwrap();
+
+        // Comment should be skipped
+        assert_eq!(tokens[0], Token::Ident("rule".to_string()));
+        assert_eq!(tokens[1], Token::Colon);
+        assert_eq!(tokens[2], Token::String("hello".to_string()));
+        assert_eq!(tokens[3], Token::Period);
+    }
+
+    #[test]
+    fn test_nested_comments() {
+        let mut lexer = Lexer::new(r#"{Outer {nested} comment} rule: "hello"."#);
+        let tokens = lexer.tokenize().unwrap();
+
+        // Nested comment should be skipped
+        assert_eq!(tokens[0], Token::Ident("rule".to_string()));
+        assert_eq!(tokens[1], Token::Colon);
+        assert_eq!(tokens[2], Token::String("hello".to_string()));
+        assert_eq!(tokens[3], Token::Period);
+    }
+
+    #[test]
+    fn test_comment_between_tokens() {
+        let mut lexer = Lexer::new(r#"rule {comment here} : "hello"."#);
+        let tokens = lexer.tokenize().unwrap();
+
+        assert_eq!(tokens[0], Token::Ident("rule".to_string()));
+        assert_eq!(tokens[1], Token::Colon);
+        assert_eq!(tokens[2], Token::String("hello".to_string()));
+        assert_eq!(tokens[3], Token::Period);
+    }
+
+    #[test]
+    fn test_unclosed_comment_error() {
+        let mut lexer = Lexer::new(r#"{Unclosed comment rule: "hello"."#);
+        let result = lexer.tokenize();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Unclosed comment");
     }
 }

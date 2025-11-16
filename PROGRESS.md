@@ -307,10 +307,16 @@ let ixml = r#"greeting: "hello"."#;
 - Generates correct XML: `<greeting>helloworld</greeting>`
 - Complete end-to-end pipeline validated!
 
+**Comment Support Complete! ✅**
+- ✅ **Nested comment support** - Handles `{outer {nested} outer}` syntax correctly
+- ✅ **Comment skipping** - Comments automatically removed during tokenization
+- ✅ **Error handling** - Detects unclosed comments with proper error messages
+- **Test Results**: **7/7 lexer tests passing!** (including 4 new comment tests)
+
 ### Next Steps
 
 **For Full Conformance Testing:**
-1. **Add comment support** - Handle `{...}` comments in iXML grammar lexer
+1. ~~**Add comment support**~~ ✅ **COMPLETE** - Handle `{...}` comments in iXML grammar lexer
 2. **Implement marks in XML generation**:
    - `-` (hidden) - Don't include element in output
    - `@` (attribute) - Element becomes XML attribute
@@ -321,7 +327,7 @@ let ixml = r#"greeting: "hello"."#;
 
 **Known Limitations:**
 - Tokenization currently splits on whitespace (works for simple tests)
-- Comments `{...}` not yet supported in lexer
+- ~~Comments `{...}` not yet supported in lexer~~ ✅ **COMPLETE**
 - Marks parsed but not yet applied in XML generation
 - Character classes/groups parsed but not yet in runtime converter
 
