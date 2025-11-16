@@ -13,6 +13,8 @@ fn main() {
         "group-simple",
         "group",
         "comma-test",
+        "star-test",
+        "optional-test",
     ];
 
     println!("Running iXML Conformance Tests\n");

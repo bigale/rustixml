@@ -840,11 +840,33 @@ fn register_repetition_actions(
                 registered.insert(star_name.clone());
 
                 // Register actions for epsilon and recursive productions
-                forest.action(&star_name, |_nodes| {
-                    XmlNode::Element { name: "repeat".to_string(), attributes: vec![], children: vec![] }
+                // Epsilon production uses "_repeat_container" to match OneOrMore pattern
+                forest.action(&format!("{} -> ", star_name), |_nodes| {
+                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: vec![] }
                 });
-                forest.action(&format!("{} -> {} {}", star_name, star_name, base_name), |nodes| {
-                    XmlNode::Element { name: "repeat".to_string(), attributes: vec![], children: nodes }
+                forest.action(&format!("{} -> {} {}", star_name, star_name, base_name), |mut nodes| {
+                    // Same pattern as OneOrMore - flatten children
+                    if nodes.len() >= 2 {
+                        let right = nodes.pop().unwrap();
+                        let left = nodes.pop().unwrap();
+
+                        let mut all_children = vec![];
+                        if let XmlNode::Element { children, name, .. } = left {
+                            if name == "_repeat_container" {
+                                all_children.extend(children);
+                            } else {
+                                all_children.push(XmlNode::Element { name, attributes: vec![], children });
+                            }
+                        } else {
+                            all_children.push(left);
+                        }
+
+                        all_children.push(right);
+
+                        XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: all_children }
+                    } else {
+                        XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
+                    }
                 });
             }
         }
@@ -854,11 +876,13 @@ fn register_repetition_actions(
                 registered.insert(opt_name.clone());
 
                 // Register actions for epsilon and base productions
-                forest.action(&opt_name, |_nodes| {
-                    XmlNode::Element { name: "optional".to_string(), attributes: vec![], children: vec![] }
+                // Epsilon production - return empty container
+                forest.action(&format!("{} -> ", opt_name), |_nodes| {
+                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: vec![] }
                 });
+                // Base production - wrap in container
                 forest.action(&format!("{} -> {}", opt_name, base_name), |nodes| {
-                    XmlNode::Element { name: "optional".to_string(), attributes: vec![], children: nodes }
+                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
                 });
             }
         }
