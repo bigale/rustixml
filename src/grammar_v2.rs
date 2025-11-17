@@ -1,4 +1,10 @@
-//! Token-based iXML grammar parser using RustyLR
+//! DEPRECATED: Token-based iXML grammar parser using RustyLR
+//!
+//! ⚠️ This parser is DEPRECATED and has exponential performance issues!
+//! Use `grammar_ast::parse_ixml_grammar()` instead, which uses the
+//! handwritten recursive descent parser (~1.5 million times faster!).
+//!
+//! This module is kept for historical reference only.
 
 use rusty_lr::lr1;
 use crate::lexer::Token;

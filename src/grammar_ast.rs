@@ -1,5 +1,15 @@
-//! Token-based iXML grammar parser using RustyLR that produces AST
+//! Token-based iXML grammar parser that produces AST
+//!
+//! Now uses a handwritten recursive descent parser for fast, linear-time parsing
+//! (previously used RustyLR GLR which had exponential performance issues)
 
+use crate::ast::IxmlGrammar;
+
+// Re-export the handwritten parser's parse function
+pub use crate::grammar_parser::parse_ixml_grammar;
+
+// Keep the old RustyLR implementation commented out for reference
+/*
 use rusty_lr::lr1;
 use crate::lexer::Token;
 use crate::ast::{IxmlGrammar, Rule, Alternatives, Sequence, Factor, BaseFactor, Mark, Repetition};
@@ -273,14 +283,16 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Result<IxmlGrammar, String> {
     }
 }
 
-pub fn parse_ixml_grammar(input: &str) -> Result<IxmlGrammar, String> {
+pub fn parse_ixml_grammar_old(input: &str) -> Result<IxmlGrammar, String> {
     use crate::lexer::Lexer;
 
     let mut lexer = Lexer::new(input);
     let tokens = lexer.tokenize()?;
     parse_tokens(tokens)
 }
+*/
 
+// Tests now use the new handwritten parser
 #[cfg(test)]
 mod tests {
     use super::*;
