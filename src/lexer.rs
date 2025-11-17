@@ -14,6 +14,8 @@ pub enum Token {
     Pipe,
     Plus,
     Star,
+    DoubleStar,   // ** for separated repetition
+    DoublePlus,   // ++ for separated repetition (one or more)
     Question,
     At,
     Minus,
@@ -157,11 +159,21 @@ impl Lexer {
             }
             Some('+') => {
                 self.advance();
-                Ok(Token::Plus)
+                if self.peek() == Some('+') {
+                    self.advance();
+                    Ok(Token::DoublePlus)
+                } else {
+                    Ok(Token::Plus)
+                }
             }
             Some('*') => {
                 self.advance();
-                Ok(Token::Star)
+                if self.peek() == Some('*') {
+                    self.advance();
+                    Ok(Token::DoubleStar)
+                } else {
+                    Ok(Token::Star)
+                }
             }
             Some('?') => {
                 self.advance();
@@ -285,8 +297,13 @@ impl Lexer {
                 self.advance(); // skip closing bracket
                 return Ok(Token::CharClass(content));
             }
-            content.push(ch);
-            self.advance();
+            if ch == '{' {
+                // Skip comment inside character class
+                self.skip_comment()?;
+            } else {
+                content.push(ch);
+                self.advance();
+            }
         }
 
         Err("Unterminated character class".to_string())

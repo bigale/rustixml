@@ -21,6 +21,8 @@ lr1! {
     %token pipe Token::Pipe;
     %token plus Token::Plus;
     %token star Token::Star;
+    %token double_star Token::DoubleStar;
+    %token double_plus Token::DoublePlus;
     %token question Token::Question;
     %token at Token::At;
     %token minus Token::Minus;
@@ -40,6 +42,24 @@ lr1! {
     | plus tok=string {
         match tok {
             Token::String(s) => BaseFactor::insertion(s),
+            _ => unreachable!(),
+        }
+    }
+    | at tok=string {
+        match tok {
+            Token::String(s) => BaseFactor::marked_literal(s, Mark::Attribute),
+            _ => unreachable!(),
+        }
+    }
+    | minus tok=string {
+        match tok {
+            Token::String(s) => BaseFactor::marked_literal(s, Mark::Hidden),
+            _ => unreachable!(),
+        }
+    }
+    | caret tok=string {
+        match tok {
+            Token::String(s) => BaseFactor::marked_literal(s, Mark::Promoted),
             _ => unreachable!(),
         }
     }
@@ -65,6 +85,42 @@ lr1! {
                 let ch = char::from_u32(code_point)
                     .expect("Invalid Unicode code point should have been caught in lexer");
                 BaseFactor::insertion(ch.to_string())
+            },
+            _ => unreachable!(),
+        }
+    }
+    | at tok=hexchar {
+        match tok {
+            Token::HexChar(hex) => {
+                let code_point = u32::from_str_radix(&hex, 16)
+                    .expect("Hex validation should have happened in lexer");
+                let ch = char::from_u32(code_point)
+                    .expect("Invalid Unicode code point should have been caught in lexer");
+                BaseFactor::marked_literal(ch.to_string(), Mark::Attribute)
+            },
+            _ => unreachable!(),
+        }
+    }
+    | minus tok=hexchar {
+        match tok {
+            Token::HexChar(hex) => {
+                let code_point = u32::from_str_radix(&hex, 16)
+                    .expect("Hex validation should have happened in lexer");
+                let ch = char::from_u32(code_point)
+                    .expect("Invalid Unicode code point should have been caught in lexer");
+                BaseFactor::marked_literal(ch.to_string(), Mark::Hidden)
+            },
+            _ => unreachable!(),
+        }
+    }
+    | caret tok=hexchar {
+        match tok {
+            Token::HexChar(hex) => {
+                let code_point = u32::from_str_radix(&hex, 16)
+                    .expect("Hex validation should have happened in lexer");
+                let ch = char::from_u32(code_point)
+                    .expect("Invalid Unicode code point should have been caught in lexer");
+                BaseFactor::marked_literal(ch.to_string(), Mark::Promoted)
             },
             _ => unreachable!(),
         }
@@ -96,6 +152,9 @@ lr1! {
     | lparen alts=Alternatives rparen {
         BaseFactor::group(alts)
     }
+    | lparen rparen {
+        BaseFactor::group(Alternatives::single(Sequence::empty()))
+    }
     | tok=charclass {
         match tok {
             Token::CharClass(content) => BaseFactor::charclass(content),
@@ -116,6 +175,24 @@ lr1! {
     | base=BaseFactor star {
         Factor::new(base, Repetition::ZeroOrMore)
     }
+    | base=BaseFactor double_star lparen sep=Sequence rparen {
+        Factor::new(base, Repetition::SeparatedZeroOrMore(Box::new(sep)))
+    }
+    | base=BaseFactor double_plus lparen sep=Sequence rparen {
+        Factor::new(base, Repetition::SeparatedOneOrMore(Box::new(sep)))
+    }
+    | base=BaseFactor double_star sep=BaseFactor {
+        // Bare separator: hash**S is equivalent to hash**(S)
+        let sep_factor = Factor::simple(sep);
+        let sep_seq = Sequence::new(vec![sep_factor]);
+        Factor::new(base, Repetition::SeparatedZeroOrMore(Box::new(sep_seq)))
+    }
+    | base=BaseFactor double_plus sep=BaseFactor {
+        // Bare separator: atom++dot is equivalent to atom++(dot)
+        let sep_factor = Factor::simple(sep);
+        let sep_seq = Sequence::new(vec![sep_factor]);
+        Factor::new(base, Repetition::SeparatedOneOrMore(Box::new(sep_seq)))
+    }
     | base=BaseFactor question {
         Factor::new(base, Repetition::Optional)
     }
@@ -132,8 +209,11 @@ lr1! {
         Sequence::new(factors)
     };
 
-    // Alternatives: one or more sequences separated by pipe
+    // Alternatives: one or more sequences separated by pipe or semicolon
     Alternatives(Alternatives): alts=$sep(Sequence, pipe, +) {
+        Alternatives::new(alts)
+    }
+    | alts=$sep(Sequence, semicolon, +) {
         Alternatives::new(alts)
     };
 
@@ -141,6 +221,24 @@ lr1! {
     Rule(Rule): name_tok=ident colon body=Alternatives period {
         match name_tok {
             Token::Ident(name) => Rule::new(name, Mark::None, body),
+            _ => unreachable!(),
+        }
+    }
+    | at name_tok=ident colon body=Alternatives period {
+        match name_tok {
+            Token::Ident(name) => Rule::new(name, Mark::Attribute, body),
+            _ => unreachable!(),
+        }
+    }
+    | minus name_tok=ident colon body=Alternatives period {
+        match name_tok {
+            Token::Ident(name) => Rule::new(name, Mark::Hidden, body),
+            _ => unreachable!(),
+        }
+    }
+    | caret name_tok=ident colon body=Alternatives period {
+        match name_tok {
+            Token::Ident(name) => Rule::new(name, Mark::Promoted, body),
             _ => unreachable!(),
         }
     };

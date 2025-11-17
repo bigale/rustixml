@@ -1,0 +1,46 @@
+Running iXML Conformance Tests
+Test directory: /home/bigale/repos/ixml/tests/correct
+================================
+
+aaa: PASS
+address: TIMEOUT
+arith: PASS
+attr-multipart: SKIP: Missing test files
+attribute-value: PASS
+diary: TIMEOUT
+diary2: TIMEOUT
+diary3: TIMEOUT
+element-content: PASS
+email: GRAMMAR_ERROR: Parse error: ParseError { term: Term(String(".")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
+empty-group: INPUT_ERROR: XML generation error: Missing Action: group_0 -> 
+expr: TIMEOUT
+expr1: GRAMMAR_ERROR: Parse error: ParseError { term: Term(Ident("plusop")), location: Some(DefaultLocation), reduce_action_errors: [], no_pre
+expr2: GRAMMAR_ERROR: Parse error: ParseError { term: Term(String("+")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
+expr3: GRAMMAR_ERROR: Parse error: ParseError { term: Term(String("+")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
+expr4: GRAMMAR_ERROR: Parse error: ParseError { term: Term(String("+")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
+expr5: TIMEOUT
+expr6: GRAMMAR_ERROR: Parse error: ParseError { term: Term(String("+")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
+hash: GRAMMAR_ERROR: Parse error: ParseError { term: Term(Ident("S")), location: Some(DefaultLocation), reduce_action_errors: [], no_preceden
+hex: PASS
+hex1: PASS
+hex3: PASS
+json: TIMEOUT
+json1: SKIP: Causes test runner crash
+lf: GRAMMAR_ERROR: Parse error: ParseError { term: Term(Ident("lf")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
+marked: FAIL
+  Expected: <a>!<c>d</c></a>
+  Actual:   <a
+   >!
+   ><c>d</c
+></a>
+nested-comment: GRAMMAR_ERROR: Parse error: ParseError { term: Term(Period), location: Some(DefaultLocation), reduce_action_errors: [], no_precedences:
+para-test: GRAMMAR_ERROR: Parse error: ParseError { term: Term(HexChar("a")), location: Some(DefaultLocation), reduce_action_errors: [], no_preced
+poly: SKIP: Contains Unicode superscripts that crash Claude Code
+program: GRAMMAR_ERROR: Parse error: ParseError { term: Term(Period), location: Some(DefaultLocation), reduce_action_errors: [], no_precedences:
+range: PASS
+range-comments: PASS
+ranges: GRAMMAR_ERROR: Parse error: ParseError { term: Term(HexChar("a")), location: Some(DefaultLocation), reduce_action_errors: [], no_preced
+ranges1: GRAMMAR_ERROR: Grammar build error: "Duplicate Rule: nonlower_opt -> nonlower"
+string: INPUT_ERROR: Parse error: "Parse Error: No Rule completes"
+tab: INPUT_ERROR: Parse error: "Parse Error: No Rule completes"
+test: PASS

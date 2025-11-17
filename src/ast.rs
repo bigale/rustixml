@@ -35,6 +35,7 @@ pub enum BaseFactor {
     Literal {
         value: String,
         insertion: bool,  // true if this is insertion syntax +"text"
+        mark: Mark,       // mark for the literal (@, -, ^)
     },
     Nonterminal {
         name: String,
@@ -49,7 +50,7 @@ pub enum BaseFactor {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Copy, Eq, Hash)]
 pub enum Mark {
     None,       // no mark
     Attribute,  // @name - becomes XML attribute
@@ -57,12 +58,14 @@ pub enum Mark {
     Promoted,   // ^name - promoted (replaces parent)
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Repetition {
     None,           // no repetition
     ZeroOrMore,     // *
     OneOrMore,      // +
     Optional,       // ?
+    SeparatedZeroOrMore(Box<Sequence>),  // **(sep)
+    SeparatedOneOrMore(Box<Sequence>),   // ++(sep)
 }
 
 impl IxmlGrammar {
@@ -109,11 +112,15 @@ impl Factor {
 
 impl BaseFactor {
     pub fn literal(value: String) -> Self {
-        BaseFactor::Literal { value, insertion: false }
+        BaseFactor::Literal { value, insertion: false, mark: Mark::None }
     }
 
     pub fn insertion(value: String) -> Self {
-        BaseFactor::Literal { value, insertion: true }
+        BaseFactor::Literal { value, insertion: true, mark: Mark::None }
+    }
+
+    pub fn marked_literal(value: String, mark: Mark) -> Self {
+        BaseFactor::Literal { value, insertion: false, mark }
     }
 
     pub fn nonterminal(name: String) -> Self {

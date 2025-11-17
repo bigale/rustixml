@@ -16,6 +16,38 @@ fn normalize_charclass_content(content: &str) -> String {
     content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", "")
 }
 
+/// Helper function to normalize separator symbols into a unique identifier
+/// This ensures different separators create different nonterminal names
+fn normalize_separator(symbols: &[String]) -> String {
+    symbols.join("_")
+        .replace("-", "_DASH_")
+        .replace("char_", "")
+        .replace("U00", "")
+        .replace("lit_seq_", "")
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_')
+        .collect()
+}
+
+/// Helper function to normalize a separator sequence into a unique identifier
+/// This allows computing separator-based names without first converting to symbols
+fn normalize_sequence(seq: &Sequence) -> String {
+    seq.factors.iter().map(|factor| {
+        match &factor.base {
+            BaseFactor::Literal { value, .. } => value.chars()
+                .map(|ch| format!("{:X}", ch as u32))
+                .collect::<Vec<_>>()
+                .join(""),
+            BaseFactor::Nonterminal { name, .. } => name.clone(),
+            BaseFactor::CharClass { content, negated } => {
+                let prefix = if *negated { "NEG" } else { "CC" };
+                format!("{}{}", prefix, normalize_charclass_content(content))
+            }
+            BaseFactor::Group { .. } => "GRP".to_string(),
+        }
+    }).collect::<Vec<_>>().join("_")
+}
+
 /// Convert an iXML AST to an Earlgrey grammar
 ///
 /// This is the "translator" that takes our parsed iXML grammar and converts it
@@ -49,6 +81,16 @@ pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> 
         };
         let predicate = parse_char_class(&content, negated);
         builder = builder.terminal(&class_name, predicate);
+    }
+
+    // Collect and pre-create marked literal wrapper rules
+    let mut marked_literals = std::collections::HashSet::new();
+    collect_marked_literals(grammar, &mut marked_literals);
+
+    for (base_name, mark) in marked_literals {
+        let marked_name = format!("{}_{}", base_name, mark_suffix(mark));
+        builder = builder.nonterm(&marked_name);
+        builder = builder.rule(&marked_name, &[&base_name]);
     }
 
     // Second pass: declare all nonterminals (including multi-char literal sequences and repetitions)
@@ -102,6 +144,16 @@ fn collect_chars_from_factor(factor: &Factor, chars: &mut std::collections::Hash
         }
         _ => {}, // Nonterminal and CharClass don't contain literal chars
     }
+
+    // Also collect chars from separator sequences in repetition operators
+    match &factor.repetition {
+        Repetition::SeparatedZeroOrMore(sep) | Repetition::SeparatedOneOrMore(sep) => {
+            for sep_factor in &sep.factors {
+                collect_chars_from_factor(sep_factor, chars);
+            }
+        }
+        _ => {}, // Other repetitions don't have separators
+    }
 }
 
 /// Collect all unique character classes from the grammar
@@ -130,6 +182,62 @@ fn collect_charclasses_from_factor(factor: &Factor, charclasses: &mut std::colle
         }
         _ => {}, // Literal and Nonterminal don't contain character classes
     }
+
+    // Also collect charclasses from separator sequences in repetition operators
+    match &factor.repetition {
+        Repetition::SeparatedZeroOrMore(sep) | Repetition::SeparatedOneOrMore(sep) => {
+            for sep_factor in &sep.factors {
+                collect_charclasses_from_factor(sep_factor, charclasses);
+            }
+        }
+        _ => {}, // Other repetitions don't have separators
+    }
+}
+
+/// Collect all unique marked literals (char/literal + mark combinations)
+fn collect_marked_literals(grammar: &IxmlGrammar, marked_literals: &mut std::collections::HashSet<(String, Mark)>) {
+    for rule in &grammar.rules {
+        collect_marked_from_alternatives(&rule.alternatives, marked_literals);
+    }
+}
+
+fn collect_marked_from_alternatives(alts: &Alternatives, marked_literals: &mut std::collections::HashSet<(String, Mark)>) {
+    for seq in &alts.alts {
+        for factor in &seq.factors {
+            collect_marked_from_factor(factor, marked_literals);
+        }
+    }
+}
+
+fn collect_marked_from_factor(factor: &Factor, marked_literals: &mut std::collections::HashSet<(String, Mark)>) {
+    match &factor.base {
+        BaseFactor::Literal { value, mark, .. } => {
+            if *mark != Mark::None {
+                // Compute the base name (same logic as convert_factor)
+                let base_name = if value.chars().count() == 1 {
+                    let ch = value.chars().next().unwrap();
+                    char_terminal_name(ch)
+                } else {
+                    format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+                };
+                marked_literals.insert((base_name, *mark));
+            }
+        }
+        BaseFactor::Group { alternatives } => {
+            collect_marked_from_alternatives(alternatives, marked_literals);
+        }
+        _ => {}, // Nonterminal and CharClass don't have marks
+    }
+
+    // Also collect from separator sequences in repetition operators
+    match &factor.repetition {
+        Repetition::SeparatedZeroOrMore(sep) | Repetition::SeparatedOneOrMore(sep) => {
+            for sep_factor in &sep.factors {
+                collect_marked_from_factor(sep_factor, marked_literals);
+            }
+        }
+        _ => {}, // Other repetitions don't have separators
+    }
 }
 
 /// Collect all repetition helper nonterminals that will be created
@@ -141,9 +249,13 @@ fn collect_repetition_nonterminals(grammar: &IxmlGrammar, nonterminals: &mut std
 
 fn collect_repetition_from_alternatives(alts: &Alternatives, nonterminals: &mut std::collections::HashSet<String>) {
     for seq in &alts.alts {
-        for factor in &seq.factors {
-            collect_repetition_from_factor(factor, nonterminals);
-        }
+        collect_nonterminals_from_sequence(nonterminals, seq);
+    }
+}
+
+fn collect_nonterminals_from_sequence(nonterminals: &mut std::collections::HashSet<String>, seq: &Sequence) {
+    for factor in &seq.factors {
+        collect_repetition_from_factor(factor, nonterminals);
     }
 }
 
@@ -177,7 +289,7 @@ fn collect_repetition_from_factor(factor: &Factor, nonterminals: &mut std::colle
     };
 
     // Add the repetition helper nonterminal based on the repetition type
-    match factor.repetition {
+    match &factor.repetition {
         Repetition::None => {}, // No helper needed
         Repetition::OneOrMore => {
             nonterminals.insert(format!("{}_plus", base_name));
@@ -187,6 +299,18 @@ fn collect_repetition_from_factor(factor: &Factor, nonterminals: &mut std::colle
         }
         Repetition::Optional => {
             nonterminals.insert(format!("{}_opt", base_name));
+        }
+        Repetition::SeparatedZeroOrMore(sep) => {
+            // base**(sep) generates both _sep_star and _sep_plus nonterminals
+            let sep_id = normalize_sequence(sep);
+            nonterminals.insert(format!("{}_sep_{}_star", base_name, sep_id));
+            nonterminals.insert(format!("{}_sep_{}_plus", base_name, sep_id));
+            collect_nonterminals_from_sequence(nonterminals, sep);
+        }
+        Repetition::SeparatedOneOrMore(sep) => {
+            let sep_id = normalize_sequence(sep);
+            nonterminals.insert(format!("{}_sep_{}_plus", base_name, sep_id));
+            collect_nonterminals_from_sequence(nonterminals, sep);
         }
     }
 }
@@ -283,43 +407,91 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
     let mut unicode_categories = Vec::new();
 
     let content = content.trim();
-    let parts: Vec<&str> = content.split(',').map(|s| s.trim()).collect();
+    let parts: Vec<&str> = content.split(';').map(|s| s.trim()).collect();
 
     for part in parts {
-        if part.contains('-') && part.contains('#') {
-            // Hex character range like #30-#39
-            let range_parts: Vec<&str> = part.split('-').collect();
-            if range_parts.len() == 2 {
-                let start_char = parse_hex_char(range_parts[0].trim());
-                let end_char = parse_hex_char(range_parts[1].trim());
-                if let (Some(start), Some(end)) = (start_char, end_char) {
-                    ranges.push((start, end));
+        // Split by comma to get individual elements
+        let elements: Vec<&str> = part.split(',').map(|s| s.trim()).collect();
+
+        for element in elements {
+            // Check for hex character range: #30-#39
+            if element.starts_with('#') && element.contains('-') {
+                // Try to parse as hex range
+                if let Some(dash_pos) = element[1..].find('-') {
+                    let actual_dash_pos = dash_pos + 1;
+                    let start_part = &element[..actual_dash_pos];
+                    let end_part = &element[actual_dash_pos + 1..];
+
+                    if end_part.starts_with('#') {
+                        let start_char = parse_hex_char(start_part);
+                        let end_char = parse_hex_char(end_part);
+                        if let (Some(start), Some(end)) = (start_char, end_char) {
+                            ranges.push((start, end));
+                            continue;
+                        }
+                    }
+                }
+                // If not a range, treat as single hex char
+                if let Some(ch) = parse_hex_char(element) {
+                    chars.push(ch);
                 }
             }
-        } else if part.contains('-') && (part.contains('\'') || part.contains('"')) {
-            // Character range like 'a'-'z' or "a"-"z"
-            let range_parts: Vec<&str> = part.split('-').collect();
-            if range_parts.len() == 2 {
-                let start_char = range_parts[0].trim().trim_matches('\'').trim_matches('"').chars().next();
-                let end_char = range_parts[1].trim().trim_matches('\'').trim_matches('"').chars().next();
-                if let (Some(start), Some(end)) = (start_char, end_char) {
-                    ranges.push((start, end));
+            // Check for quoted character range: "a"-"z" or 'a'-'z'
+            else if (element.starts_with('\'') || element.starts_with('"')) && element.contains('-') {
+                // Look for pattern: "x"-"y" or 'x'-'y'
+                let quote = if element.starts_with('\'') { '\'' } else { '"' };
+
+                // Find the closing quote
+                if let Some(first_close) = element[1..].find(quote) {
+                    let first_close = first_close + 1;
+
+                    // Check if there's a dash after the closing quote
+                    let after_close = &element[first_close + 1..];
+                    if after_close.starts_with('-') && after_close.len() > 1 {
+                        // Check if there's another quoted char after the dash
+                        let after_dash = &after_close[1..];
+                        if (after_dash.starts_with('\'') || after_dash.starts_with('"')) {
+                            // This is a range
+                            let start_str = &element[1..first_close];
+                            let start_char = start_str.chars().next();
+
+                            let end_quote = if after_dash.starts_with('\'') { '\'' } else { '"' };
+                            if let Some(end_close) = after_dash[1..].find(end_quote) {
+                                let end_str = &after_dash[1..end_close + 1];
+                                let end_char = end_str.chars().next();
+
+                                if let (Some(start), Some(end)) = (start_char, end_char) {
+                                    ranges.push((start, end));
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Not a range, treat as quoted string of individual characters
+                let inner = element.trim_matches('\'').trim_matches('"');
+                for ch in inner.chars() {
+                    chars.push(ch);
                 }
             }
-        } else if part.starts_with('#') {
-            // Single hex character like #20
-            if let Some(ch) = parse_hex_char(part) {
-                chars.push(ch);
+            // Single hex character
+            else if element.starts_with('#') {
+                if let Some(ch) = parse_hex_char(element) {
+                    chars.push(ch);
+                }
             }
-        } else if (part.starts_with('\'') && part.ends_with('\'')) || (part.starts_with('"') && part.ends_with('"')) {
-            // Single quoted character with either ' or "
-            let ch = part.trim_matches('\'').trim_matches('"').chars().next();
-            if let Some(c) = ch {
-                chars.push(c);
+            // Single quoted string (characters)
+            else if (element.starts_with('\'') && element.ends_with('\'')) || (element.starts_with('"') && element.ends_with('"')) {
+                let inner = element.trim_matches('\'').trim_matches('"');
+                for ch in inner.chars() {
+                    chars.push(ch);
+                }
             }
-        } else if part.len() == 1 || part.len() == 2 {
-            // Unicode category like "L" or "Nd"
-            unicode_categories.push(part.to_string());
+            // Unicode category
+            else if element.len() == 1 || element.len() == 2 {
+                unicode_categories.push(element.to_string());
+            }
         }
     }
 
@@ -402,16 +574,38 @@ fn convert_sequence(mut builder: GrammarBuilder, rule_name: &str, seq: &Sequence
 }
 
 /// Convert a factor (a single grammar element, possibly with repetition)
+/// Helper to get suffix for marked symbols
+fn mark_suffix(mark: Mark) -> &'static str {
+    match mark {
+        Mark::None => "",
+        Mark::Attribute => "attr",
+        Mark::Hidden => "hidden",
+        Mark::Promoted => "promoted",
+    }
+}
+
+/// Convert a sequence to a list of symbol names (for use in separated repetition)
+fn convert_sequence_to_symbols(mut builder: GrammarBuilder, seq: &Sequence) -> Result<(GrammarBuilder, Vec<String>), String> {
+    let mut symbols = Vec::new();
+
+    for factor in &seq.factors {
+        let (new_builder, symbol_name) = convert_factor(builder, factor)?;
+        builder = new_builder;
+        symbols.push(symbol_name);
+    }
+
+    Ok((builder, symbols))
+}
+
 fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(GrammarBuilder, String), String> {
     // First get the base symbol name
     let (new_builder, base_name) = match &factor.base {
-        BaseFactor::Literal { value, insertion: _ } => {
+        BaseFactor::Literal { value, insertion: _, mark } => {
             // For character-level parsing, split literal into individual characters
-            if value.len() == 1 {
+            let base = if value.chars().count() == 1 {
                 // Single character - terminal is already defined, just return the name
                 let ch = value.chars().next().unwrap();
-                let term_name = char_terminal_name(ch);
-                (builder, term_name)
+                char_terminal_name(ch)
             } else {
                 // Multi-character literal - create a sequence rule
                 let seq_name = format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"));
@@ -422,9 +616,16 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
                     .collect();
 
                 // Create a rule: seq_name := char1 char2 char3 ...
-                let b = builder.rule(&seq_name, &char_symbols.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+                builder = builder.rule(&seq_name, &char_symbols.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+                seq_name
+            };
 
-                (b, seq_name)
+            // If the literal has a mark, use the pre-created wrapper nonterminal
+            if *mark != Mark::None {
+                let marked_name = format!("{}_{}", base, mark_suffix(*mark));
+                (builder, marked_name)
+            } else {
+                (builder, base)
             }
 
             // TODO: Track insertion flag for XML generation
@@ -471,7 +672,7 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
     builder = new_builder;
 
     // Handle repetition by creating helper rules
-    match factor.repetition {
+    match &factor.repetition {
         Repetition::None => Ok((builder, base_name)),
         Repetition::OneOrMore => {
             // Create a new rule: base_name_plus := base_name | base_name_plus base_name
@@ -509,6 +710,60 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
             builder = builder.rule(&opt_name, &[&base_name]);
             Ok((builder, opt_name))
         }
+        Repetition::SeparatedZeroOrMore(sep) => {
+            // base**(sep) := ε | base_sep_plus
+            // Create unique names based on separator to avoid duplicates
+            let sep_id = normalize_sequence(sep);
+            let star_name = format!("{}_sep_{}_star", base_name, sep_id);
+            let plus_name = format!("{}_sep_{}_plus", base_name, sep_id);
+
+            // Convert separator sequence to runtime symbols
+            let (new_builder, sep_symbols) = convert_sequence_to_symbols(builder, sep)?;
+            builder = new_builder;
+
+            if base_name.starts_with("group_") {
+                builder = builder.nonterm(&star_name);
+                builder = builder.nonterm(&plus_name);
+            }
+
+            // base_sep_star := ε | base_sep_plus
+            builder = builder.rule(&star_name, &[] as &[&str]);
+            builder = builder.rule(&star_name, &[&plus_name]);
+
+            // base_sep_plus := base | base_sep_plus sep base
+            builder = builder.rule(&plus_name, &[&base_name]);
+            let mut plus_rule = vec![plus_name.clone()];
+            plus_rule.extend(sep_symbols.iter().map(|s| s.clone()));
+            plus_rule.push(base_name.clone());
+            let rule_refs: Vec<&str> = plus_rule.iter().map(|s| s.as_str()).collect();
+            builder = builder.rule(&plus_name, &rule_refs);
+
+            Ok((builder, star_name))
+        }
+        Repetition::SeparatedOneOrMore(sep) => {
+            // base++(sep) := base | base_sep_plus sep base
+            // Create unique name based on separator to avoid duplicates
+            let sep_id = normalize_sequence(sep);
+            let plus_name = format!("{}_sep_{}_plus", base_name, sep_id);
+
+            // Convert separator sequence to runtime symbols
+            let (new_builder, sep_symbols) = convert_sequence_to_symbols(builder, sep)?;
+            builder = new_builder;
+
+            if base_name.starts_with("group_") {
+                builder = builder.nonterm(&plus_name);
+            }
+
+            // base_sep_plus := base | base_sep_plus sep base
+            builder = builder.rule(&plus_name, &[&base_name]);
+            let mut plus_rule = vec![plus_name.clone()];
+            plus_rule.extend(sep_symbols.iter().map(|s| s.clone()));
+            plus_rule.push(base_name.clone());
+            let rule_refs: Vec<&str> = plus_rule.iter().map(|s| s.as_str()).collect();
+            builder = builder.rule(&plus_name, &rule_refs);
+
+            Ok((builder, plus_name))
+        }
     }
 }
 
@@ -521,28 +776,171 @@ pub enum XmlNode {
 }
 
 impl XmlNode {
+    fn escape_xml_attr(s: &str) -> String {
+        // We use single quotes for attribute values
+        // Per XML spec, in attributes we must escape: &, <, ' (when using single quotes)
+        // We don't need to escape > or " in single-quoted attributes
+        s.replace('&', "&amp;")
+         .replace('<', "&lt;")
+         .replace('\'', "&apos;")
+    }
+
+    fn escape_xml_text(s: &str) -> String {
+        // In text content, we must escape: &, <
+        // We don't escape > in text content per the iXML spec examples
+        s.replace('&', "&amp;")
+         .replace('<', "&lt;")
+    }
+
+    /// Check if this node is a self-closing element (has no children)
+    fn is_self_closing(&self) -> bool {
+        matches!(self, XmlNode::Element { children, .. } if children.is_empty())
+    }
+
     pub fn to_xml(&self) -> String {
+        self.to_xml_internal(0, true)
+    }
+
+    /// Internal XML serialization with canonical iXML formatting
+    ///
+    /// The canonical format:
+    /// - Opening and closing tags are written without their final `>`
+    /// - The `>` appears on the next line with indentation before the next content
+    /// - Exception: root element's final closing tag includes its `>`
+    fn to_xml_internal(&self, depth: usize, is_root: bool) -> String {
         match self {
             XmlNode::Element { name, attributes, children } => {
+                let indent = "   ".repeat(depth);
+
                 let attrs_str = if attributes.is_empty() {
                     String::new()
                 } else {
                     format!(" {}", attributes.iter()
-                        .map(|(k, v)| format!("{}=\"{}\"", k, v))
+                        .map(|(k, v)| format!("{}='{}'", k, Self::escape_xml_attr(v)))
                         .collect::<Vec<_>>()
                         .join(" "))
                 };
 
+                // Check if this element only contains text (no element children)
+                let only_text = children.iter().all(|c| matches!(c, XmlNode::Text(_)));
+
                 if children.is_empty() {
-                    format!("<{}{}/>", name, attrs_str)
-                } else {
-                    let children_xml: String = children.iter()
-                        .map(|c| c.to_xml())
+                    // Self-closing element - in canonical format, just the opening tag without >
+                    // The /> will be added by the parent when iterating children
+                    format!("<{}{}", name, attrs_str)
+                } else if only_text {
+                    // Element with only text content - use compact format
+                    // Closing tag gets final > only if this is the root element
+                    let text_content: String = children.iter()
+                        .filter_map(|c| match c {
+                            XmlNode::Text(s) => Some(Self::escape_xml_text(s)),
+                            _ => None,
+                        })
                         .collect();
-                    format!("<{}{}>{}</{}>", name, attrs_str, children_xml, name)
+                    if is_root {
+                        format!("<{}{}>{}</{}>", name, attrs_str, text_content, name)
+                    } else {
+                        format!("<{}{}>{}</{}", name, attrs_str, text_content, name)
+                    }
+                } else {
+                    // Element with child elements - use canonical format
+                    let mut result = format!("<{}{}", name, attrs_str);
+
+                    for (i, child) in children.iter().enumerate() {
+                        let curr_is_text = matches!(child, XmlNode::Text(_));
+
+                        if i == 0 {
+                            // First child - add newline and indentation before it, then close parent tag
+                            if !curr_is_text {
+                                // First child is an element - add newline before it
+                                result.push('\n');
+                                result.push_str(&indent);
+                                result.push_str("   ");
+                            }
+                            // Close parent's opening tag
+                            result.push('>');
+                        } else {
+                            // Not the first child
+                            let prev_child = &children[i - 1];
+                            let prev_is_text = matches!(prev_child, XmlNode::Text(_));
+
+                            if !prev_is_text && !curr_is_text {
+                                // Previous was an element, current is also an element
+                                // Close previous element with > on a new line before current element
+                                result.push('\n');
+                                result.push_str(&indent);
+                                result.push_str("   ");
+
+                                if Self::is_self_closing(prev_child) {
+                                    result.push_str("/>");
+                                } else {
+                                    result.push('>');
+                                }
+
+                                // Current element goes inline after the >
+                            } else if !prev_is_text && curr_is_text {
+                                // Previous was an element, current is text
+                                // Check if there's an element after this text (look ahead)
+                                let has_element_after = children.iter().skip(i + 1)
+                                    .any(|c| !matches!(c, XmlNode::Text(_)));
+
+                                if has_element_after {
+                                    // There's an element coming after this text
+                                    // Close previous element with newline + indent + >
+                                    result.push('\n');
+                                    result.push_str(&indent);
+                                    result.push_str("   ");
+                                    if Self::is_self_closing(prev_child) {
+                                        result.push_str("/>");
+                                    } else {
+                                        result.push('>');
+                                    }
+                                    // Text continues inline after the >
+                                } else {
+                                    // No more elements, just text remaining
+                                    // Close previous element inline
+                                    if Self::is_self_closing(prev_child) {
+                                        result.push_str("/>");
+                                    } else {
+                                        result.push('>');
+                                    }
+                                    // Text continues inline, no newline
+                                }
+                            }
+                            // If prev is text, current content (text or element) continues inline
+                        }
+
+                        result.push_str(&child.to_xml_internal(depth + 1, false));
+                    }
+
+                    // Close the last child if it's an element (not text)
+                    // Text nodes don't need closing, and parent closing tag appears inline after text
+                    if let Some(last_child) = children.last() {
+                        if matches!(last_child, XmlNode::Text(_)) {
+                            // Last child is text - parent closing tag goes inline, no newline
+                        } else {
+                            // Last child is an element - close it on a new line
+                            result.push('\n');
+                            result.push_str(&indent);
+                            if Self::is_self_closing(last_child) {
+                                result.push_str("/>");
+                            } else {
+                                result.push('>');
+                            }
+                        }
+                    }
+
+                    // Close this element
+                    if is_root {
+                        result.push_str(&format!("</{}>", name));
+                    } else {
+                        result.push_str(&format!("</{}", name));
+                    }
+
+                    result
                 }
             }
-            XmlNode::Text(s) => s.clone(),
+            XmlNode::Text(s) => Self::escape_xml_text(s),
             XmlNode::Attribute { .. } => {
                 // Attributes should have been extracted by parent, shouldn't appear in output
                 String::new()
@@ -575,6 +973,9 @@ pub fn build_xml_forest(grammar: &IxmlGrammar) -> EarleyForest<'static, XmlNode>
 
     // Also register actions for group nonterminals
     register_group_actions(&mut forest, grammar);
+
+    // Register actions for marked literal wrappers
+    register_marked_literal_actions(&mut forest, grammar);
 
     forest
 }
@@ -632,12 +1033,42 @@ fn register_rule_actions(
                 };
 
                 // Handle repetition containers - extract their children
-                if let XmlNode::Element { ref name, .. } = node {
-                    if name == "_repeat_container" {
-                        if let XmlNode::Element { children: inner, .. } = node {
-                            children.extend(inner);
-                            continue;
+                // Check what type of element this is first
+                let should_unwrap = if let XmlNode::Element { ref name, .. } = &node {
+                    name == "_repeat_container" || name == "_hidden"
+                } else {
+                    false
+                };
+
+                if should_unwrap {
+                    // Now we can destructure and move node
+                    if let XmlNode::Element { name, children: inner, .. } = node {
+                        // eprintln!("[UNWRAP] Processing {} in {}", name, rule_name_for_closure);
+                        if name == "_repeat_container" {
+                            // eprintln!("[UNWRAP] Extracted {} children from container", inner.len());
+                            // Recursively unwrap any nested containers
+                            for child in inner {
+                                if let XmlNode::Element { name: child_name, children: nested, attributes: child_attrs } = child {
+                                    if child_name == "_repeat_container" {
+                                        // eprintln!("[UNWRAP] Found nested container with {} children", nested.len());
+                                        children.extend(nested);
+                                    } else {
+                                        children.push(XmlNode::Element { name: child_name, children: nested, attributes: child_attrs });
+                                    }
+                                } else {
+                                    children.push(child);
+                                }
+                            }
+                        } else if name == "_hidden" {
+                            // Extract text content from hidden elements
+                            // eprintln!("[UNWRAP] Extracting text from _hidden with {} children", inner.len());
+                            for child in inner {
+                                if let XmlNode::Text(text) = child {
+                                    children.push(XmlNode::Text(text));
+                                }
+                            }
                         }
+                        continue;
                     }
                 }
 
@@ -651,12 +1082,18 @@ fn register_rule_actions(
                     (XmlNode::Attribute { name, value }, _) => {
                         attributes.push((name, value));
                     }
-                    // Hidden nodes - unwrap and promote children
-                    (XmlNode::Element { children: inner, .. }, Mark::Hidden) => {
+                    // Hidden nodes - unwrap and promote children and attributes
+                    (XmlNode::Element { children: inner, attributes: hidden_attrs, .. }, Mark::Hidden) => {
+                        // Promote attributes from hidden element to parent
+                        attributes.extend(hidden_attrs);
+                        // Promote children
                         children.extend(inner);
                     }
-                    // Promoted nodes - unwrap and promote children
-                    (XmlNode::Element { children: inner, .. }, Mark::Promoted) => {
+                    // Promoted nodes - unwrap and promote children and attributes
+                    (XmlNode::Element { children: inner, attributes: promoted_attrs, .. }, Mark::Promoted) => {
+                        // Promote attributes from promoted element to parent
+                        attributes.extend(promoted_attrs);
+                        // Promote children
                         children.extend(inner);
                     }
                     // Regular nodes - keep as is
@@ -809,7 +1246,7 @@ fn register_group_actions_from_alternatives(
     for seq in &alts.alts {
         for factor in &seq.factors {
             if let BaseFactor::Group { alternatives } = &factor.base {
-                // Get the group name by generating the same ID as during conversion
+                // Assign ID to this group
                 let group_id = *group_counter;
                 *group_counter += 1;
                 let group_name = format!("group_{}", group_id);
@@ -841,7 +1278,8 @@ fn register_group_actions_from_alternatives(
                     });
                 }
 
-                // Recurse into the group's alternatives
+                // Recurse into the group's alternatives to find nested groups
+                // Note: build_symbol_list_for_sequence already incremented counter for nested groups
                 register_group_actions_from_alternatives(forest, alternatives, group_counter);
             }
         }
@@ -854,12 +1292,19 @@ fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> 
     let mut symbols = Vec::new();
     for factor in &seq.factors {
         let base_name = match &factor.base {
-            BaseFactor::Literal { value, .. } => {
-                if value.len() == 1 {
+            BaseFactor::Literal { value, mark, .. } => {
+                let base = if value.len() == 1 {
                     let ch = value.chars().next().unwrap();
                     char_terminal_name(ch)
                 } else {
                     format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+                };
+
+                // If marked, use the marked wrapper name
+                if *mark != Mark::None {
+                    format!("{}_{}", base, mark_suffix(*mark))
+                } else {
+                    base
                 }
             }
             BaseFactor::Nonterminal { name, .. } => name.clone(),
@@ -871,19 +1316,26 @@ fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> 
                 }
             }
             BaseFactor::Group { .. } => {
-                // For groups, generate the ID and increment the local counter
+                // For groups, use current counter (incremented by register_group_actions)
                 let group_id = *group_counter;
-                *group_counter += 1;
                 format!("group_{}", group_id)
             }
         };
 
         // Handle repetition
-        let symbol_name = match factor.repetition {
+        let symbol_name = match &factor.repetition {
             Repetition::None => base_name,
             Repetition::OneOrMore => format!("{}_plus", base_name),
             Repetition::ZeroOrMore => format!("{}_star", base_name),
             Repetition::Optional => format!("{}_opt", base_name),
+            Repetition::SeparatedZeroOrMore(sep) => {
+                let sep_id = normalize_sequence(sep);
+                format!("{}_sep_{}_star", base_name, sep_id)
+            }
+            Repetition::SeparatedOneOrMore(sep) => {
+                let sep_id = normalize_sequence(sep);
+                format!("{}_sep_{}_plus", base_name, sep_id)
+            }
         };
 
         symbols.push(symbol_name);
@@ -893,16 +1345,101 @@ fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> 
 
 /// Get the symbol name for a factor (matches the logic in ast_to_earlgrey)
 /// Returns (base_name, symbol_name) where base_name is without repetition suffix
+/// Register actions for marked literal wrappers (e.g., char_dot_hidden -> char_dot)
+fn register_marked_literal_actions(forest: &mut EarleyForest<'static, XmlNode>, grammar: &IxmlGrammar) {
+    for rule in &grammar.rules {
+        register_marked_literal_from_alternatives(forest, &rule.alternatives);
+    }
+}
+
+fn register_marked_literal_from_alternatives(
+    forest: &mut EarleyForest<'static, XmlNode>,
+    alts: &Alternatives,
+) {
+    for seq in &alts.alts {
+        for factor in &seq.factors {
+            // Check if this factor is a marked literal
+            if let BaseFactor::Literal { value, mark, .. } = &factor.base {
+                if *mark != Mark::None {
+                    // Get the base symbol name
+                    let base = if value.len() == 1 {
+                        let ch = value.chars().next().unwrap();
+                        char_terminal_name(ch)
+                    } else {
+                        format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+                    };
+
+                    let marked_name = format!("{}_{}", base, mark_suffix(*mark));
+                    let production = format!("{} -> {}", marked_name, base);
+
+                    // Register action based on mark type
+                    match mark {
+                        Mark::Hidden => {
+                            // Hidden: don't include in output
+                            forest.action(&production, |_nodes| {
+                                // Return an empty element that will be unwrapped by parent
+                                XmlNode::Element {
+                                    name: "_hidden".to_string(),
+                                    attributes: vec![],
+                                    children: vec![],
+                                }
+                            });
+                        }
+                        Mark::Attribute => {
+                            // Attribute: extract text and create attribute node
+                            let name_clone = marked_name.clone();
+                            forest.action(&production, move |nodes| {
+                                let text = extract_text_from_nodes(&nodes);
+                                XmlNode::Attribute {
+                                    name: name_clone.clone(),
+                                    value: text,
+                                }
+                            });
+                        }
+                        Mark::Promoted => {
+                            // Promoted: pass through without wrapper
+                            forest.action(&production, |mut nodes| {
+                                if nodes.len() == 1 {
+                                    nodes.pop().unwrap()
+                                } else {
+                                    XmlNode::Element {
+                                        name: "_promoted".to_string(),
+                                        attributes: vec![],
+                                        children: nodes,
+                                    }
+                                }
+                            });
+                        }
+                        Mark::None => {}
+                    }
+                }
+            }
+
+            // Recurse into groups
+            if let BaseFactor::Group { alternatives } = &factor.base {
+                register_marked_literal_from_alternatives(forest, alternatives);
+            }
+        }
+    }
+}
+
 fn get_factor_symbol(factor: &Factor) -> (String, String) {
     let base_name = match &factor.base {
-        BaseFactor::Literal { value, insertion: _ } => {
-            if value.len() == 1 {
+        BaseFactor::Literal { value, insertion: _, mark } => {
+            let base = if value.len() == 1 {
                 // Single character - use char terminal name
                 let ch = value.chars().next().unwrap();
                 char_terminal_name(ch)
             } else {
                 // Multi-character literal - use sequence name
                 format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+            };
+
+            // If marked, use the marked wrapper name
+            if *mark != Mark::None {
+                format!("{}_{}", base, mark_suffix(*mark))
+            } else {
+                base
             }
         }
         BaseFactor::Nonterminal { name, mark: _ } => name.clone(),
@@ -922,11 +1459,19 @@ fn get_factor_symbol(factor: &Factor) -> (String, String) {
     };
 
     // Handle repetition by using the helper rule name
-    let symbol_name = match factor.repetition {
+    let symbol_name = match &factor.repetition {
         Repetition::None => base_name.clone(),
         Repetition::OneOrMore => format!("{}_plus", base_name),
         Repetition::ZeroOrMore => format!("{}_star", base_name),
         Repetition::Optional => format!("{}_opt", base_name),
+        Repetition::SeparatedZeroOrMore(sep) => {
+            let sep_id = normalize_sequence(sep);
+            format!("{}_sep_{}_star", base_name, sep_id)
+        }
+        Repetition::SeparatedOneOrMore(sep) => {
+            let sep_id = normalize_sequence(sep);
+            format!("{}_sep_{}_plus", base_name, sep_id)
+        }
     };
 
     (base_name, symbol_name)
@@ -943,7 +1488,7 @@ fn register_repetition_actions(
     // Use the passed base_name directly instead of recalculating it
     // This ensures we don't increment GROUP_COUNTER a second time for groups
 
-    match factor.repetition {
+    match &factor.repetition {
         Repetition::OneOrMore => {
             let plus_name = format!("{}_plus", base_name);
             if !registered.contains(&plus_name) {
@@ -1039,6 +1584,158 @@ fn register_repetition_actions(
             }
         }
         Repetition::None => {}
+        Repetition::SeparatedZeroOrMore(sep) => {
+            // For base**(sep), we have: base_sep_star -> ε | base_sep_plus
+            // and base_sep_plus -> base | base_sep_plus sep base
+            let sep_id = normalize_sequence(sep);
+            let star_name = format!("{}_sep_{}_star", base_name, sep_id);
+            let plus_name = format!("{}_sep_{}_plus", base_name, sep_id);
+
+            if !registered.contains(&star_name) {
+                registered.insert(star_name.clone());
+
+                // Register star actions
+                forest.action(&format!("{} -> ", star_name), |_nodes| {
+                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: vec![] }
+                });
+                forest.action(&format!("{} -> {}", star_name, plus_name), |nodes| {
+                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
+                });
+            }
+
+            if !registered.contains(&plus_name) {
+                registered.insert(plus_name.clone());
+
+                // Get separator symbol names
+                let mut group_counter = 0;
+                let sep_symbols = build_symbol_list_for_sequence(&sep, &mut group_counter);
+
+                // Register base case: base_sep_plus -> base
+                forest.action(&format!("{} -> {}", plus_name, base_name), |nodes| {
+                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
+                });
+
+                // Register recursive case: base_sep_plus -> base_sep_plus sep... base
+                let mut recursive_pattern = format!("{} -> {}", plus_name, plus_name);
+                for sep_sym in &sep_symbols {
+                    recursive_pattern.push_str(&format!(" {}", sep_sym));
+                }
+                recursive_pattern.push_str(&format!(" {}", base_name));
+
+                let sep_len = sep_symbols.len(); // Store the length to avoid capturing vec
+                forest.action(&recursive_pattern, move |mut nodes| {
+                    // Extract left (recursive result), separators (include them!), and right (base)
+                    if nodes.is_empty() {
+                        return XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: vec![] };
+                    }
+
+                    let right = nodes.pop().unwrap();
+                    // Collect separator nodes instead of skipping them
+                    let mut separators = vec![];
+                    for _ in 0..sep_len {
+                        if !nodes.is_empty() {
+                            separators.push(nodes.pop().unwrap());
+                        }
+                    }
+                    separators.reverse(); // Restore original order
+
+                    let left = if !nodes.is_empty() { nodes.pop().unwrap() } else {
+                        XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: vec![] }
+                    };
+
+                    let mut all_children = vec![];
+                    if let XmlNode::Element { children, name, .. } = left {
+                        if name == "_repeat_container" {
+                            all_children.extend(children);
+                        } else {
+                            all_children.push(XmlNode::Element { name, attributes: vec![], children });
+                        }
+                    } else {
+                        all_children.push(left);
+                    }
+
+                    // Add separators to output
+                    all_children.extend(separators);
+                    all_children.push(right);
+
+                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: all_children }
+                });
+            }
+        }
+        Repetition::SeparatedOneOrMore(sep) => {
+            // For base++(sep), we have: base_sep_plus -> base | base_sep_plus sep base
+            let sep_id = normalize_sequence(sep);
+            let plus_name = format!("{}_sep_{}_plus", base_name, sep_id);
+
+            if !registered.contains(&plus_name) {
+                registered.insert(plus_name.clone());
+
+                // Get separator symbol names
+                let mut group_counter = 0;
+                let sep_symbols = build_symbol_list_for_sequence(&sep, &mut group_counter);
+
+                // Register base case: base_sep_plus -> base
+                forest.action(&format!("{} -> {}", plus_name, base_name), |nodes| {
+                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
+                });
+
+                // Register recursive case: base_sep_plus -> base_sep_plus sep... base
+                let mut recursive_pattern = format!("{} -> {}", plus_name, plus_name);
+                for sep_sym in &sep_symbols {
+                    recursive_pattern.push_str(&format!(" {}", sep_sym));
+                }
+                recursive_pattern.push_str(&format!(" {}", base_name));
+
+                let sep_len = sep_symbols.len(); // Store the length to avoid capturing vec
+                forest.action(&recursive_pattern, move |mut nodes| {
+                    // Extract left (recursive result), separators (include them!), and right (base)
+                    if nodes.is_empty() {
+                        return XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: vec![] };
+                    }
+
+                    let right = nodes.pop().unwrap();
+                    // Collect separator nodes instead of skipping them
+                    let mut separators = vec![];
+                    for _ in 0..sep_len {
+                        if !nodes.is_empty() {
+                            separators.push(nodes.pop().unwrap());
+                        }
+                    }
+                    separators.reverse(); // Restore original order
+
+                    let left = if !nodes.is_empty() { nodes.pop().unwrap() } else {
+                        XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: vec![] }
+                    };
+
+                    let mut all_children = vec![];
+                    if let XmlNode::Element { children, name, .. } = left {
+                        if name == "_repeat_container" {
+                            all_children.extend(children);
+                        } else {
+                            all_children.push(XmlNode::Element { name, attributes: vec![], children });
+                        }
+                    } else {
+                        all_children.push(left);
+                    }
+
+                    // Add separators to output
+                    all_children.extend(separators);
+                    all_children.push(right);
+
+                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: all_children }
+                });
+            }
+        }
+    }
+
+    // Recurse into groups to register actions for nested factors
+    if let BaseFactor::Group { alternatives } = &factor.base {
+        for alt in &alternatives.alts {
+            for nested_factor in &alt.factors {
+                let (nested_base_name, _) = get_factor_symbol(nested_factor);
+                register_repetition_actions(forest, nested_factor, &nested_base_name, registered);
+            }
+        }
     }
 }
 
