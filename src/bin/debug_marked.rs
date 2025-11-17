@@ -3,7 +3,7 @@ use rustixml::testsuite_utils::{read_simple_test, run_test, TestOutcome};
 fn main() {
     let test_dir = std::env::var("TEST_DIR")
         .unwrap_or_else(|_| "/ixml_tests/correct".to_string());
-    let test_name = "lf";
+    let test_name = "marked";
 
     match read_simple_test(&test_dir, test_name) {
         Ok(test) => {

@@ -16,6 +16,7 @@ crate-type = ["lib", "cdylib"]
 rusty_lr = "3.34.0"
 unicode-normalization = "0.1"
 earlgrey = "0.3"
+roxmltree = "0.20"
 
 [dev-dependencies]
 
@@ -37,6 +38,11 @@ required-features = []
 [[bin]]
 name = "star_test_debug"
 path = "star_test_debug.rs"
+required-features = []
+
+[[bin]]
+name = "test_negated_charclass"
+path = "src/bin/test_negated_charclass.rs"
 required-features = []
 
 [profile.release]

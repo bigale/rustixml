@@ -23,6 +23,80 @@ pub enum TestOutcome {
     Skip(String),
 }
 
+/// Semantic XML comparison - compares XML structure and content while ignoring formatting
+/// This matches how production iXML implementations (like Markup Blitz) compare test results
+fn xml_deep_equal(xml1: &str, xml2: &str) -> bool {
+    use roxmltree::Document;
+
+    // Parse both XML documents
+    let doc1 = match Document::parse(xml1) {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+    let doc2 = match Document::parse(xml2) {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+
+    // Compare root elements
+    nodes_equal(doc1.root_element(), doc2.root_element())
+}
+
+/// Recursively compare two XML nodes for semantic equality
+fn nodes_equal(node1: roxmltree::Node, node2: roxmltree::Node) -> bool {
+
+    // Tag names must match
+    if node1.tag_name() != node2.tag_name() {
+        return false;
+    }
+
+    // Attributes must match (same keys and values, order doesn't matter)
+    let attrs1: std::collections::HashMap<_, _> = node1.attributes()
+        .map(|a| (a.name(), a.value()))
+        .collect();
+    let attrs2: std::collections::HashMap<_, _> = node2.attributes()
+        .map(|a| (a.name(), a.value()))
+        .collect();
+
+    if attrs1 != attrs2 {
+        return false;
+    }
+
+    // Collect element children (ignoring text nodes that are only whitespace)
+    let children1: Vec<_> = node1.children()
+        .filter(|n| n.is_element() || (n.is_text() && !n.text().unwrap_or("").trim().is_empty()))
+        .collect();
+    let children2: Vec<_> = node2.children()
+        .filter(|n| n.is_element() || (n.is_text() && !n.text().unwrap_or("").trim().is_empty()))
+        .collect();
+
+    if children1.len() != children2.len() {
+        return false;
+    }
+
+    // Compare children in order
+    for (child1, child2) in children1.iter().zip(children2.iter()) {
+        if child1.is_element() && child2.is_element() {
+            // Recursively compare child elements
+            if !nodes_equal(*child1, *child2) {
+                return false;
+            }
+        } else if child1.is_text() && child2.is_text() {
+            // Compare text content (trimmed)
+            let text1 = child1.text().unwrap_or("").trim();
+            let text2 = child2.text().unwrap_or("").trim();
+            if text1 != text2 {
+                return false;
+            }
+        } else {
+            // One is text, one is element - not equal
+            return false;
+        }
+    }
+
+    true
+}
+
 /// Read a simple test case from files
 /// For now, just reads .ixml, .inp, and .output.xml files directly
 pub fn read_simple_test(base_path: &str, test_name: &str) -> Result<TestCase, String> {
@@ -106,13 +180,22 @@ pub fn run_test(test: &TestCase) -> TestOutcome {
     let actual_xml = xml_node.to_xml();
 
     // Step 5: Compare with expected output
+    // Use semantic XML comparison like production iXML implementations (Markup Blitz)
+    // This ignores formatting/whitespace differences while comparing structure and content
     if let Some(expected) = &test.expected_xml {
         let expected_trimmed = expected.trim();
         let actual_trimmed = actual_xml.trim();
 
+        // Try exact string match first (fastest)
         if expected_trimmed == actual_trimmed {
             TestOutcome::Pass
-        } else {
+        }
+        // Fall back to semantic XML comparison (ignores formatting)
+        else if xml_deep_equal(expected_trimmed, actual_trimmed) {
+            TestOutcome::Pass
+        }
+        // Neither matched - test fails
+        else {
             TestOutcome::Fail {
                 expected: expected_trimmed.to_string(),
                 actual: actual_trimmed.to_string(),

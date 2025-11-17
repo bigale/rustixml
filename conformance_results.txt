@@ -1,46 +1,88 @@
-Running iXML Conformance Tests
-Test directory: /home/bigale/repos/ixml/tests/correct
-================================
+warning: unnecessary parentheses around `if` condition
+   --> src/runtime_parser.rs:454:28
+    |
+454 |                         if (after_dash.starts_with('\'') || after_dash.starts_with('"')) {
+    |                            ^                                                           ^
+    |
+    = note: `#[warn(unused_parens)]` on by default
+help: remove these parentheses
+    |
+454 -                         if (after_dash.starts_with('\'') || after_dash.starts_with('"')) {
+454 +                         if after_dash.starts_with('\'') || after_dash.starts_with('"') {
+    |
 
+warning: method `skip_whitespace` is never used
+   --> src/lexer.rs:116:8
+    |
+38  | impl Lexer {
+    | ---------- method in this implementation
+...
+116 |     fn skip_whitespace(&mut self) {
+    |        ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: function `normalize_separator` is never used
+  --> src/runtime_parser.rs:21:4
+   |
+21 | fn normalize_separator(symbols: &[String]) -> String {
+   |    ^^^^^^^^^^^^^^^^^^^
+
+warning: `rustixml` (lib) generated 3 warnings (run `cargo fix --lib -p rustixml` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/safe_conformance_runner`
 aaa: PASS
-address: TIMEOUT
+address: SKIP_TIMEOUT
 arith: PASS
-attr-multipart: SKIP: Missing test files
+attr-multipart: SKIP
 attribute-value: PASS
-diary: TIMEOUT
-diary2: TIMEOUT
-diary3: TIMEOUT
+diary: SKIP_TIMEOUT
+diary2: SKIP_TIMEOUT
+diary3: SKIP_TIMEOUT
 element-content: PASS
-email: GRAMMAR_ERROR: Parse error: ParseError { term: Term(String(".")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
-empty-group: INPUT_ERROR: XML generation error: Missing Action: group_0 -> 
-expr: TIMEOUT
-expr1: GRAMMAR_ERROR: Parse error: ParseError { term: Term(Ident("plusop")), location: Some(DefaultLocation), reduce_action_errors: [], no_pre
-expr2: GRAMMAR_ERROR: Parse error: ParseError { term: Term(String("+")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
-expr3: GRAMMAR_ERROR: Parse error: ParseError { term: Term(String("+")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
-expr4: GRAMMAR_ERROR: Parse error: ParseError { term: Term(String("+")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
-expr5: TIMEOUT
-expr6: GRAMMAR_ERROR: Parse error: ParseError { term: Term(String("+")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
-hash: GRAMMAR_ERROR: Parse error: ParseError { term: Term(Ident("S")), location: Some(DefaultLocation), reduce_action_errors: [], no_preceden
+email: INPUT_ERROR
+empty-group: INPUT_ERROR
+expr: SKIP_TIMEOUT
+expr1: SKIP_TIMEOUT
+expr2: SKIP_TIMEOUT
+expr3: SKIP_TIMEOUT
+expr4: SKIP_TIMEOUT
+expr5: SKIP_TIMEOUT
+expr6: SKIP_TIMEOUT
+hash: PASS
 hex: PASS
 hex1: PASS
 hex3: PASS
 json: TIMEOUT
-json1: SKIP: Causes test runner crash
-lf: GRAMMAR_ERROR: Parse error: ParseError { term: Term(Ident("lf")), location: Some(DefaultLocation), reduce_action_errors: [], no_precede
-marked: FAIL
-  Expected: <a>!<c>d</c></a>
-  Actual:   <a
-   >!
-   ><c>d</c
-></a>
-nested-comment: GRAMMAR_ERROR: Parse error: ParseError { term: Term(Period), location: Some(DefaultLocation), reduce_action_errors: [], no_precedences:
-para-test: GRAMMAR_ERROR: Parse error: ParseError { term: Term(HexChar("a")), location: Some(DefaultLocation), reduce_action_errors: [], no_preced
-poly: SKIP: Contains Unicode superscripts that crash Claude Code
-program: GRAMMAR_ERROR: Parse error: ParseError { term: Term(Period), location: Some(DefaultLocation), reduce_action_errors: [], no_precedences:
+json1: SKIP_TIMEOUT
+lf: PASS
+marked: PASS
+nested-comment: GRAMMAR_ERROR
+para-test: PASS
+poly: SKIP_TIMEOUT
+program: GRAMMAR_ERROR
 range: PASS
 range-comments: PASS
-ranges: GRAMMAR_ERROR: Parse error: ParseError { term: Term(HexChar("a")), location: Some(DefaultLocation), reduce_action_errors: [], no_preced
-ranges1: GRAMMAR_ERROR: Grammar build error: "Duplicate Rule: nonlower_opt -> nonlower"
-string: INPUT_ERROR: Parse error: "Parse Error: No Rule completes"
-tab: INPUT_ERROR: Parse error: "Parse Error: No Rule completes"
+ranges: PASS
+ranges1: GRAMMAR_ERROR
+string: PASS
+tab: PASS
 test: PASS
+unicode-classes: TIMEOUT
+unicode-range: PASS
+unicode-range1: INPUT_ERROR
+unicode-range2: PASS
+unicode-version-diagnostic: SKIP
+vcard: TIMEOUT
+version-decl: SKIP
+version-decl.2: SKIP
+ws-and-delim: SKIP
+xml: TIMEOUT
+xml1: TIMEOUT
+xpath: TIMEOUT
+Tests: 49
+Pass: 19
+Fail: 0
+Timeout: 19
+Error: 6
+Results: /tmp/safe_results.txt
