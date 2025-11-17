@@ -807,9 +807,31 @@ impl XmlNode {
     /// - Opening and closing tags are written without their final `>`
     /// - The `>` appears on the next line with indentation before the next content
     /// - Exception: root element's final closing tag includes its `>`
+    /// Check if a node produces inline content (text without element tags)
+    /// Used for formatting decisions - these nodes should be treated like text
+    fn is_inline_content(node: &XmlNode) -> bool {
+        match node {
+            XmlNode::Text(_) => true,
+            XmlNode::Element { name, .. } => {
+                // __hidden__ and __promoted__ elements unwrap to inline content
+                name == "__hidden__" || name == "__promoted__"
+            }
+            XmlNode::Attribute { .. } => true,
+        }
+    }
+
     fn to_xml_internal(&self, depth: usize, is_root: bool) -> String {
         match self {
             XmlNode::Element { name, attributes, children } => {
+                // Skip rendering __hidden__ and __promoted__ wrapper elements
+                // Just render their children directly
+                if name == "__hidden__" || name == "__promoted__" {
+                    return children.iter()
+                        .map(|child| child.to_xml_internal(depth, false))
+                        .collect::<Vec<_>>()
+                        .join("");
+                }
+
                 let indent = "   ".repeat(depth);
 
                 let attrs_str = if attributes.is_empty() {
@@ -822,7 +844,7 @@ impl XmlNode {
                 };
 
                 // Check if this element only contains text (no element children)
-                let only_text = children.iter().all(|c| matches!(c, XmlNode::Text(_)));
+                let only_text = children.iter().all(|c| Self::is_inline_content(c));
 
                 if children.is_empty() {
                     // Self-closing element - in canonical format, just the opening tag without >
@@ -846,13 +868,15 @@ impl XmlNode {
                     // Element with child elements - use canonical format
                     let mut result = format!("<{}{}", name, attrs_str);
 
+                    // Check if there are any non-inline children - if so, use canonical line breaking
+                    let has_elements = children.iter().any(|c| !Self::is_inline_content(c));
+
                     for (i, child) in children.iter().enumerate() {
-                        let curr_is_text = matches!(child, XmlNode::Text(_));
+                        let curr_is_inline = Self::is_inline_content(child);
 
                         if i == 0 {
-                            // First child - add newline and indentation before it, then close parent tag
-                            if !curr_is_text {
-                                // First child is an element - add newline before it
+                            // First child - in canonical format with elements, always add newline before >
+                            if has_elements {
                                 result.push('\n');
                                 result.push_str(&indent);
                                 result.push_str("   ");
@@ -862,9 +886,9 @@ impl XmlNode {
                         } else {
                             // Not the first child
                             let prev_child = &children[i - 1];
-                            let prev_is_text = matches!(prev_child, XmlNode::Text(_));
+                            let prev_is_inline = Self::is_inline_content(prev_child);
 
-                            if !prev_is_text && !curr_is_text {
+                            if !prev_is_inline && !curr_is_inline {
                                 // Previous was an element, current is also an element
                                 // Close previous element with > on a new line before current element
                                 result.push('\n');
@@ -878,14 +902,14 @@ impl XmlNode {
                                 }
 
                                 // Current element goes inline after the >
-                            } else if !prev_is_text && curr_is_text {
-                                // Previous was an element, current is text
-                                // Check if there's an element after this text (look ahead)
+                            } else if !prev_is_inline && curr_is_inline {
+                                // Previous was an element, current is inline content
+                                // Check if there's an element after this inline content (look ahead)
                                 let has_element_after = children.iter().skip(i + 1)
-                                    .any(|c| !matches!(c, XmlNode::Text(_)));
+                                    .any(|c| !Self::is_inline_content(c));
 
                                 if has_element_after {
-                                    // There's an element coming after this text
+                                    // There's an element coming after this inline content
                                     // Close previous element with newline + indent + >
                                     result.push('\n');
                                     result.push_str(&indent);
@@ -895,29 +919,29 @@ impl XmlNode {
                                     } else {
                                         result.push('>');
                                     }
-                                    // Text continues inline after the >
+                                    // Inline content continues inline after the >
                                 } else {
-                                    // No more elements, just text remaining
+                                    // No more elements, just inline content remaining
                                     // Close previous element inline
                                     if Self::is_self_closing(prev_child) {
                                         result.push_str("/>");
                                     } else {
                                         result.push('>');
                                     }
-                                    // Text continues inline, no newline
+                                    // Inline content continues inline, no newline
                                 }
                             }
-                            // If prev is text, current content (text or element) continues inline
+                            // If prev is inline (text or __hidden__), curr continues inline regardless of type
                         }
 
                         result.push_str(&child.to_xml_internal(depth + 1, false));
                     }
 
-                    // Close the last child if it's an element (not text)
-                    // Text nodes don't need closing, and parent closing tag appears inline after text
+                    // Close the last child if it's an element (not inline content)
+                    // Inline content doesn't need closing, and parent closing tag appears inline after it
                     if let Some(last_child) = children.last() {
-                        if matches!(last_child, XmlNode::Text(_)) {
-                            // Last child is text - parent closing tag goes inline, no newline
+                        if Self::is_inline_content(last_child) {
+                            // Last child is inline content - parent closing tag goes inline, no newline
                         } else {
                             // Last child is an element - close it on a new line
                             result.push('\n');
