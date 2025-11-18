@@ -6,6 +6,491 @@
 use earlgrey::{EarleyParser, GrammarBuilder, EarleyForest};
 use crate::ast::{IxmlGrammar, Rule, Alternatives, Sequence, Factor, BaseFactor, Repetition, Mark};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::{HashMap, BTreeSet};
+
+// ============================================================================
+// Character Class Partitioning (Phase 1 Optimization)
+// ============================================================================
+
+/// A set of character ranges, used for character class partitioning
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct RangeSet {
+    /// Sorted, non-overlapping ranges stored as (start, end) inclusive
+    ranges: Vec<(char, char)>,
+}
+
+impl RangeSet {
+    /// Create an empty RangeSet
+    pub fn new() -> Self {
+        RangeSet { ranges: Vec::new() }
+    }
+
+    /// Create a RangeSet from a single character
+    pub fn from_char(ch: char) -> Self {
+        RangeSet { ranges: vec![(ch, ch)] }
+    }
+
+    /// Create a RangeSet from a range
+    pub fn from_range(start: char, end: char) -> Self {
+        if start <= end {
+            RangeSet { ranges: vec![(start, end)] }
+        } else {
+            RangeSet::new()
+        }
+    }
+
+    /// Check if the set is empty
+    pub fn is_empty(&self) -> bool {
+        self.ranges.is_empty()
+    }
+
+    /// Add a character to the set
+    pub fn add_char(&mut self, ch: char) {
+        self.add_range(ch, ch);
+    }
+
+    /// Add a range to the set
+    pub fn add_range(&mut self, start: char, end: char) {
+        if start > end {
+            return;
+        }
+        self.ranges.push((start, end));
+        self.normalize();
+    }
+
+    /// Normalize ranges: sort and merge overlapping/adjacent ranges
+    fn normalize(&mut self) {
+        if self.ranges.len() <= 1 {
+            return;
+        }
+        self.ranges.sort_by_key(|r| r.0);
+        let mut merged = Vec::with_capacity(self.ranges.len());
+        let mut current = self.ranges[0];
+
+        for &(start, end) in &self.ranges[1..] {
+            // Check if ranges overlap or are adjacent
+            if start as u32 <= current.1 as u32 + 1 {
+                // Merge ranges
+                current.1 = current.1.max(end);
+            } else {
+                merged.push(current);
+                current = (start, end);
+            }
+        }
+        merged.push(current);
+        self.ranges = merged;
+    }
+
+    /// Union of two RangeSets
+    pub fn union(&self, other: &RangeSet) -> RangeSet {
+        let mut result = self.clone();
+        for &(start, end) in &other.ranges {
+            result.add_range(start, end);
+        }
+        result
+    }
+
+    /// Intersection of two RangeSets
+    pub fn intersection(&self, other: &RangeSet) -> RangeSet {
+        let mut result = RangeSet::new();
+
+        for &(a_start, a_end) in &self.ranges {
+            for &(b_start, b_end) in &other.ranges {
+                let int_start = a_start.max(b_start);
+                let int_end = a_end.min(b_end);
+                if int_start <= int_end {
+                    result.ranges.push((int_start, int_end));
+                }
+            }
+        }
+        result.normalize();
+        result
+    }
+
+    /// Subtract other from self (self - other)
+    pub fn minus(&self, other: &RangeSet) -> RangeSet {
+        let mut result = self.clone();
+
+        for &(sub_start, sub_end) in &other.ranges {
+            let mut new_ranges = Vec::new();
+
+            for &(start, end) in &result.ranges {
+                if sub_end < start || sub_start > end {
+                    // No overlap, keep the range
+                    new_ranges.push((start, end));
+                } else {
+                    // Overlap exists, split the range
+                    if start < sub_start {
+                        // Keep part before subtraction
+                        new_ranges.push((start, char::from_u32(sub_start as u32 - 1).unwrap_or(start)));
+                    }
+                    if end > sub_end {
+                        // Keep part after subtraction
+                        new_ranges.push((char::from_u32(sub_end as u32 + 1).unwrap_or(end), end));
+                    }
+                }
+            }
+            result.ranges = new_ranges;
+        }
+        result.normalize();
+        result
+    }
+
+    /// Check if the set contains a character
+    pub fn contains(&self, ch: char) -> bool {
+        for &(start, end) in &self.ranges {
+            if ch >= start && ch <= end {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Generate a unique name for this RangeSet
+    pub fn to_name(&self) -> String {
+        let mut parts = Vec::new();
+        for &(start, end) in &self.ranges {
+            if start == end {
+                parts.push(format!("{:X}", start as u32));
+            } else {
+                parts.push(format!("{:X}_{:X}", start as u32, end as u32));
+            }
+        }
+        format!("cc_{}", parts.join("_"))
+    }
+
+    /// Create a predicate function for this RangeSet
+    pub fn to_predicate(&self) -> Box<dyn Fn(&str) -> bool + Send + Sync> {
+        let ranges = self.ranges.clone();
+        Box::new(move |s: &str| {
+            if s.chars().count() != 1 {
+                return false;
+            }
+            let ch = s.chars().next().unwrap();
+            for &(start, end) in &ranges {
+                if ch >= start && ch <= end {
+                    return true;
+                }
+            }
+            false
+        })
+    }
+}
+
+/// Parse a character class content string into a RangeSet
+/// This handles the same formats as parse_char_class but returns a RangeSet
+fn charclass_to_rangeset(content: &str) -> RangeSet {
+    let mut result = RangeSet::new();
+
+    // Split by semicolon to get inclusion and exclusion parts
+    let parts: Vec<&str> = content.split(';').collect();
+
+    for part in parts {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+
+        // Split by comma or pipe to get individual elements
+        let elements: Vec<&str> = part.split(|c| c == ',' || c == '|').map(|s| s.trim()).collect();
+
+        for element in elements {
+            let element = element.trim();
+            if element.is_empty() {
+                continue;
+            }
+
+            // Check for hex character range: #30-#39
+            if element.starts_with('#') && element.contains('-') {
+                if let Some(dash_pos) = element[1..].find('-') {
+                    let actual_dash_pos = dash_pos + 1;
+                    let start_part = &element[..actual_dash_pos];
+                    let end_part = &element[actual_dash_pos + 1..];
+
+                    if end_part.starts_with('#') {
+                        if let (Some(start), Some(end)) = (parse_hex_char(start_part), parse_hex_char(end_part)) {
+                            result.add_range(start, end);
+                            continue;
+                        }
+                    }
+                }
+                // Not a range, treat as single hex char
+                if let Some(ch) = parse_hex_char(element) {
+                    result.add_char(ch);
+                }
+            }
+            // Check for quoted character range: "a"-"z"
+            else if (element.starts_with('\'') || element.starts_with('"')) && element.contains('-') {
+                let quote = if element.starts_with('\'') { '\'' } else { '"' };
+                if let Some(first_close) = element[1..].find(quote) {
+                    let first_close = first_close + 1;
+                    let after_close = &element[first_close + 1..];
+                    if after_close.starts_with('-') && after_close.len() > 1 {
+                        let after_dash = &after_close[1..];
+                        if after_dash.starts_with('\'') || after_dash.starts_with('"') {
+                            let start_str = &element[1..first_close];
+                            let start_char = start_str.chars().next();
+                            let end_quote = if after_dash.starts_with('\'') { '\'' } else { '"' };
+                            if let Some(end_close) = after_dash[1..].find(end_quote) {
+                                let end_str = &after_dash[1..end_close + 1];
+                                let end_char = end_str.chars().next();
+                                if let (Some(start), Some(end)) = (start_char, end_char) {
+                                    result.add_range(start, end);
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+                // Not a range, treat as quoted characters
+                let inner = element.trim_matches('\'').trim_matches('"');
+                for ch in inner.chars() {
+                    result.add_char(ch);
+                }
+            }
+            // Single hex character
+            else if element.starts_with('#') {
+                if let Some(ch) = parse_hex_char(element) {
+                    result.add_char(ch);
+                }
+            }
+            // Single quoted string
+            else if (element.starts_with('\'') && element.ends_with('\'')) ||
+                    (element.starts_with('"') && element.ends_with('"')) {
+                let inner = element.trim_matches('\'').trim_matches('"');
+                for ch in inner.chars() {
+                    result.add_char(ch);
+                }
+            }
+            // Unicode category - skip for now (handled separately)
+        }
+    }
+
+    result
+}
+
+/// Classify character classes into disjoint partitions
+/// This is the key optimization from markup-blitz
+pub fn classify_charclasses(all_charclasses: &[(String, bool)]) -> (Vec<RangeSet>, HashMap<(String, bool), Vec<usize>>) {
+    // Convert all character classes to RangeSets
+    let mut rangesets: Vec<(RangeSet, String, bool)> = Vec::new();
+    for (content, negated) in all_charclasses {
+        let rs = charclass_to_rangeset(content);
+        if !rs.is_empty() {
+            rangesets.push((rs, content.clone(), *negated));
+        }
+    }
+
+    if rangesets.is_empty() {
+        return (Vec::new(), HashMap::new());
+    }
+
+    // Compute disjoint partitions
+    // Start with the union of all ranges
+    let mut partitions: Vec<RangeSet> = Vec::new();
+    let mut all_union = RangeSet::new();
+    for (rs, _, _) in &rangesets {
+        all_union = all_union.union(rs);
+    }
+    partitions.push(all_union);
+
+    // For each original charset, split existing partitions
+    for (rangeset, _, _) in &rangesets {
+        let mut new_partitions = Vec::new();
+
+        for partition in &partitions {
+            let intersection = rangeset.intersection(partition);
+            if !intersection.is_empty() {
+                if intersection != *partition {
+                    // Split the partition
+                    let remainder = partition.minus(&intersection);
+                    if !remainder.is_empty() {
+                        new_partitions.push(remainder);
+                    }
+                    new_partitions.push(intersection);
+                } else {
+                    // Partition is fully contained, keep it
+                    new_partitions.push(partition.clone());
+                }
+            } else {
+                // No intersection, keep partition as-is
+                new_partitions.push(partition.clone());
+            }
+        }
+
+        // Deduplicate partitions
+        let mut seen = BTreeSet::new();
+        partitions = new_partitions.into_iter().filter(|p| {
+            let key = format!("{:?}", p.ranges);
+            if seen.contains(&key) {
+                false
+            } else {
+                seen.insert(key);
+                true
+            }
+        }).collect();
+    }
+
+    // Map each original charset to its partition indices
+    let mut mapping: HashMap<(String, bool), Vec<usize>> = HashMap::new();
+
+    for (rangeset, content, negated) in &rangesets {
+        let mut indices = Vec::new();
+        for (i, partition) in partitions.iter().enumerate() {
+            // Check if this partition is part of the original rangeset
+            let intersection = rangeset.intersection(partition);
+            if !intersection.is_empty() && intersection == *partition {
+                indices.push(i);
+            }
+        }
+        mapping.insert((content.clone(), *negated), indices);
+    }
+
+    (partitions, mapping)
+}
+
+/// Transform the AST to replace character classes with partitioned alternatives
+/// This is the AST transformation approach for character class partitioning
+pub fn partition_charclasses_in_ast(grammar: &IxmlGrammar) -> IxmlGrammar {
+    // Collect all character classes
+    let mut charclasses_seen = std::collections::HashSet::new();
+    collect_charclasses(grammar, &mut charclasses_seen);
+
+    // Convert to vector for partitioning
+    let charclass_list: Vec<(String, bool)> = charclasses_seen.iter().cloned().collect();
+
+    // Compute partitions
+    let (partitions, partition_mapping) = classify_charclasses(&charclass_list);
+
+    // If no partitions or single charclass, return unchanged
+    if partitions.is_empty() || charclass_list.len() <= 1 {
+        return grammar.clone();
+    }
+
+    // Transform the grammar by replacing CharClass with partitioned Groups
+    let transformed_rules: Vec<Rule> = grammar.rules.iter().map(|rule| {
+        Rule {
+            name: rule.name.clone(),
+            mark: rule.mark,
+            alternatives: transform_alternatives(&rule.alternatives, &partitions, &partition_mapping),
+        }
+    }).collect();
+
+    IxmlGrammar { rules: transformed_rules }
+}
+
+fn transform_alternatives(
+    alts: &Alternatives,
+    partitions: &[RangeSet],
+    mapping: &HashMap<(String, bool), Vec<usize>>,
+) -> Alternatives {
+    Alternatives {
+        alts: alts.alts.iter().map(|seq| transform_sequence(seq, partitions, mapping)).collect(),
+    }
+}
+
+fn transform_sequence(
+    seq: &Sequence,
+    partitions: &[RangeSet],
+    mapping: &HashMap<(String, bool), Vec<usize>>,
+) -> Sequence {
+    Sequence {
+        factors: seq.factors.iter().map(|factor| transform_factor(factor, partitions, mapping)).collect(),
+    }
+}
+
+fn transform_factor(
+    factor: &Factor,
+    partitions: &[RangeSet],
+    mapping: &HashMap<(String, bool), Vec<usize>>,
+) -> Factor {
+    let transformed_base = match &factor.base {
+        BaseFactor::CharClass { content, negated, mark } => {
+            // Check if this charclass should be partitioned
+            if let Some(indices) = mapping.get(&(content.clone(), *negated)) {
+                if indices.len() > 1 {
+                    // Create a Group with alternatives for each partition
+                    let partition_alts: Vec<Sequence> = indices.iter().map(|&idx| {
+                        let partition = &partitions[idx];
+                        // Convert partition RangeSet to charclass content string
+                        let partition_content = rangeset_to_charclass_content(partition);
+                        Sequence {
+                            factors: vec![Factor {
+                                base: BaseFactor::CharClass {
+                                    content: partition_content,
+                                    negated: false, // Partitions are always positive
+                                    mark: *mark,
+                                },
+                                repetition: Repetition::None,
+                            }],
+                        }
+                    }).collect();
+
+                    BaseFactor::Group {
+                        alternatives: Box::new(Alternatives { alts: partition_alts }),
+                    }
+                } else {
+                    // Single partition, keep as-is (but could use partition content)
+                    factor.base.clone()
+                }
+            } else {
+                // Not in mapping, keep as-is
+                factor.base.clone()
+            }
+        }
+        BaseFactor::Group { alternatives } => {
+            BaseFactor::Group {
+                alternatives: Box::new(transform_alternatives(alternatives, partitions, mapping)),
+            }
+        }
+        _ => factor.base.clone(),
+    };
+
+    // Also transform separator sequences in repetitions
+    let transformed_rep = match &factor.repetition {
+        Repetition::SeparatedZeroOrMore(sep) => {
+            Repetition::SeparatedZeroOrMore(Box::new(transform_sequence(sep, partitions, mapping)))
+        }
+        Repetition::SeparatedOneOrMore(sep) => {
+            Repetition::SeparatedOneOrMore(Box::new(transform_sequence(sep, partitions, mapping)))
+        }
+        _ => factor.repetition.clone(),
+    };
+
+    Factor {
+        base: transformed_base,
+        repetition: transformed_rep,
+    }
+}
+
+/// Convert a RangeSet back to a charclass content string
+fn rangeset_to_charclass_content(rs: &RangeSet) -> String {
+    let mut parts = Vec::new();
+    for &(start, end) in &rs.ranges {
+        if start == end {
+            // Single character
+            if start as u32 <= 0x7F && start.is_alphanumeric() {
+                parts.push(format!("\"{}\"", start));
+            } else {
+                parts.push(format!("#{:X}", start as u32));
+            }
+        } else {
+            // Range
+            let start_str = if start as u32 <= 0x7F && start.is_alphanumeric() {
+                format!("\"{}\"", start)
+            } else {
+                format!("#{:X}", start as u32)
+            };
+            let end_str = if end as u32 <= 0x7F && end.is_alphanumeric() {
+                format!("\"{}\"", end)
+            } else {
+                format!("#{:X}", end as u32)
+            };
+            parts.push(format!("{}-{}", start_str, end_str));
+        }
+    }
+    parts.join(", ")
+}
 
 // Global counter for generating unique group IDs
 static GROUP_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -103,6 +588,12 @@ fn normalize_sequence(seq: &Sequence) -> String {
     }).collect::<Vec<_>>().join("_")
 }
 
+// Feature flag for character class partitioning
+// Set to true to enable AST transformation for partitioning
+// NOTE: Currently disabled - causes regression on ranges test
+// TODO: Fix rangeset_to_charclass_content to generate valid syntax
+const ENABLE_CHARCLASS_PARTITIONING: bool = false;
+
 /// Convert an iXML AST to an Earlgrey grammar
 ///
 /// This is the "translator" that takes our parsed iXML grammar and converts it
@@ -110,6 +601,14 @@ fn normalize_sequence(seq: &Sequence) -> String {
 pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> {
     // Reset group counter for deterministic group naming across conversion and XML generation
     GROUP_COUNTER.store(0, Ordering::SeqCst);
+
+    // Optionally transform the AST for character class partitioning
+    let grammar = if ENABLE_CHARCLASS_PARTITIONING {
+        partition_charclasses_in_ast(grammar)
+    } else {
+        grammar.clone()
+    };
+    let grammar = &grammar;
 
     let mut builder = GrammarBuilder::default();
 
@@ -120,14 +619,16 @@ pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> 
     for ch in chars_seen {
         let term_name = char_terminal_name(ch);
         builder = builder.terminal(&term_name, move |s: &str| {
-            s.len() == 1 && s.chars().next() == Some(ch)
+            // Use chars().count() for proper Unicode support, not byte length
+            s.chars().count() == 1 && s.chars().next() == Some(ch)
         });
     }
 
-    // Also collect and define character class terminals
+    // Collect and define character class terminals
     let mut charclasses_seen = std::collections::HashSet::new();
     collect_charclasses(grammar, &mut charclasses_seen);
 
+    // Define terminals for each character class
     for (content, negated) in charclasses_seen {
         let class_name = if negated {
             format!("charclass_neg_{}", normalize_charclass_content(&content))
@@ -332,7 +833,7 @@ fn collect_repetition_from_factor(factor: &Factor, nonterminals: &mut std::colle
     let base_name = match &factor.base {
         BaseFactor::Literal { value, mark, .. } => {
             // Literals become terminals (single char) or sequences (multi-char)
-            let base = if value.len() == 1 {
+            let base = if value.chars().count() == 1 {
                 char_terminal_name(value.chars().next().unwrap())
             } else {
                 format!("lit_seq_{}", normalize_literal_sequence(value))
@@ -533,7 +1034,7 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
                     if after_close.starts_with('-') && after_close.len() > 1 {
                         // Check if there's another quoted char after the dash
                         let after_dash = &after_close[1..];
-                        if (after_dash.starts_with('\'') || after_dash.starts_with('"')) {
+                        if after_dash.starts_with('\'') || after_dash.starts_with('"') {
                             // This is a range
                             let start_str = &element[1..first_close];
                             let start_char = start_str.chars().next();
@@ -942,8 +1443,8 @@ impl XmlNode {
         match node {
             XmlNode::Text(_) => true,
             XmlNode::Element { name, .. } => {
-                // __hidden__ and __promoted__ elements unwrap to inline content
-                name == "__hidden__" || name == "__promoted__"
+                // Hidden and promoted elements unwrap to inline content
+                name == "__hidden__" || name == "__promoted__" || name == "_hidden" || name == "_promoted"
             }
             XmlNode::Attribute { .. } => true,
         }
@@ -952,9 +1453,9 @@ impl XmlNode {
     fn to_xml_internal(&self, depth: usize, is_root: bool, compact_mode: bool) -> String {
         match self {
             XmlNode::Element { name, attributes, children } => {
-                // Skip rendering __hidden__ and __promoted__ wrapper elements
+                // Skip rendering hidden and promoted wrapper elements
                 // Just render their children directly
-                if name == "__hidden__" || name == "__promoted__" {
+                if name == "__hidden__" || name == "__promoted__" || name == "_hidden" || name == "_promoted" {
                     return children.iter()
                         .map(|child| child.to_xml_internal(depth, false, compact_mode))
                         .collect::<Vec<_>>()
@@ -1181,6 +1682,7 @@ fn register_rule_actions(
 
         // Register the action for this production
         let rule_name_for_closure = rule_name.to_string();
+        let base_names_for_closure = base_names.clone();
         forest.action(&production, move |nodes: Vec<XmlNode>| {
             // Separate attribute children from regular children and process marks
             let mut attributes = Vec::new();
@@ -1192,11 +1694,16 @@ fn register_rule_actions(
                 } else {
                     Mark::None
                 };
+                let factor_base_name = if i < base_names_for_closure.len() {
+                    &base_names_for_closure[i]
+                } else {
+                    ""
+                };
 
                 // Handle repetition containers - extract their children
                 // Check what type of element this is first
                 let should_unwrap = if let XmlNode::Element { ref name, .. } = &node {
-                    name == "_repeat_container" || name == "_hidden"
+                    name == "_repeat_container" || name == "_hidden" || name == "group"
                 } else {
                     false
                 };
@@ -1204,14 +1711,11 @@ fn register_rule_actions(
                 if should_unwrap {
                     // Now we can destructure and move node
                     if let XmlNode::Element { name, children: inner, .. } = node {
-                        // eprintln!("[UNWRAP] Processing {} in {}", name, rule_name_for_closure);
                         if name == "_repeat_container" {
-                            // eprintln!("[UNWRAP] Extracted {} children from container", inner.len());
                             // Recursively unwrap any nested containers
                             for child in inner {
                                 if let XmlNode::Element { name: child_name, children: nested, attributes: child_attrs } = child {
                                     if child_name == "_repeat_container" {
-                                        // eprintln!("[UNWRAP] Found nested container with {} children", nested.len());
                                         children.extend(nested);
                                     } else {
                                         children.push(XmlNode::Element { name: child_name, children: nested, attributes: child_attrs });
@@ -1220,12 +1724,19 @@ fn register_rule_actions(
                                     children.push(child);
                                 }
                             }
-                        } else if name == "_hidden" {
-                            // Extract text content from hidden elements
-                            // eprintln!("[UNWRAP] Extracting text from _hidden with {} children", inner.len());
+                        } else if name == "_hidden" || name == "group" {
+                            // Promote all children from hidden elements and groups (not just text)
+                            // Recursively unwrap any containers inside the hidden/group
                             for child in inner {
-                                if let XmlNode::Text(text) = child {
-                                    children.push(XmlNode::Text(text));
+                                if let XmlNode::Element { name: child_name, children: nested, attributes: child_attrs } = child {
+                                    if child_name == "_repeat_container" || child_name == "_hidden" || child_name == "group" {
+                                        // Recursively unwrap nested containers/groups
+                                        children.extend(nested);
+                                    } else {
+                                        children.push(XmlNode::Element { name: child_name, children: nested, attributes: child_attrs });
+                                    }
+                                } else {
+                                    children.push(child);
                                 }
                             }
                         }
@@ -1250,12 +1761,27 @@ fn register_rule_actions(
                         // Promote children
                         children.extend(inner);
                     }
-                    // Promoted nodes - unwrap and promote children and attributes
-                    (XmlNode::Element { children: inner, attributes: promoted_attrs, .. }, Mark::Promoted) => {
-                        // Promote attributes from promoted element to parent
-                        attributes.extend(promoted_attrs);
-                        // Promote children
-                        children.extend(inner);
+                    // Promoted nodes - make hidden elements visible with proper name
+                    (node, Mark::Promoted) => {
+                        let promoted_element = match node {
+                            // For _hidden wrapper: extract content and create element with base name
+                            XmlNode::Element { name, children: inner, attributes: attrs } if name == "_hidden" => {
+                                XmlNode::Element {
+                                    name: factor_base_name.to_string(),
+                                    attributes: attrs,
+                                    children: inner,
+                                }
+                            }
+                            // For regular elements: keep as-is
+                            other => other,
+                        };
+
+                        // Wrap in _promoted for inline rendering
+                        children.push(XmlNode::Element {
+                            name: "_promoted".to_string(),
+                            attributes: vec![],
+                            children: vec![promoted_element],
+                        });
                     }
                     // Regular nodes - keep as is
                     (node, _) => {
@@ -1268,14 +1794,12 @@ fn register_rule_actions(
             match rule_mark {
                 Mark::Hidden => {
                     // Hidden: return children without wrapper
-                    // For simplicity, wrap in a pseudo-element that gets unwrapped by parent
-                    // Actually, we need to return something - let's return the first child
-                    // or create an empty element that won't render
+                    // Wrap in _hidden element that gets unwrapped by parent
                     if children.len() == 1 {
                         children.into_iter().next().unwrap()
                     } else {
                         XmlNode::Element {
-                            name: "__hidden__".to_string(),
+                            name: "_hidden".to_string(),
                             attributes: vec![],
                             children,
                         }
@@ -1295,7 +1819,7 @@ fn register_rule_actions(
                         children.into_iter().next().unwrap()
                     } else {
                         XmlNode::Element {
-                            name: "__promoted__".to_string(),
+                            name: "_promoted".to_string(),
                             attributes: vec![],
                             children,
                         }
@@ -1425,7 +1949,7 @@ fn register_group_actions_from_alternatives(
                     };
 
                     // Action: groups just pass through their child nodes
-                    forest.action(&production, |nodes: Vec<XmlNode>| {
+                    forest.action(&production, move |nodes: Vec<XmlNode>| {
                         if nodes.is_empty() {
                             // Empty group - return hidden element (will be filtered out)
                             XmlNode::Element {
@@ -1436,9 +1960,9 @@ fn register_group_actions_from_alternatives(
                         } else if nodes.len() == 1 {
                             nodes.into_iter().next().unwrap()
                         } else {
-                            // Multiple nodes - wrap in an element
+                            // Multiple nodes - wrap in hidden element (will be unwrapped)
                             XmlNode::Element {
-                                name: "group".to_string(),
+                                name: "_hidden".to_string(),
                                 attributes: vec![],
                                 children: nodes,
                             }
@@ -1461,7 +1985,7 @@ fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> 
     for factor in &seq.factors {
         let base_name = match &factor.base {
             BaseFactor::Literal { value, mark, .. } => {
-                let base = if value.len() == 1 {
+                let base = if value.chars().count() == 1 {
                     let ch = value.chars().next().unwrap();
                     char_terminal_name(ch)
                 } else {
@@ -1530,7 +2054,7 @@ fn register_marked_literal_from_alternatives(
             if let BaseFactor::Literal { value, mark, .. } = &factor.base {
                 if *mark != Mark::None {
                     // Get the base symbol name
-                    let base = if value.len() == 1 {
+                    let base = if value.chars().count() == 1 {
                         let ch = value.chars().next().unwrap();
                         char_terminal_name(ch)
                     } else {
@@ -1650,7 +2174,7 @@ fn register_marked_literal_from_alternatives(
 fn get_factor_symbol(factor: &Factor) -> (String, String) {
     let base_name = match &factor.base {
         BaseFactor::Literal { value, insertion: _, mark } => {
-            let base = if value.len() == 1 {
+            let base = if value.chars().count() == 1 {
                 // Single character - use char terminal name
                 let ch = value.chars().next().unwrap();
                 char_terminal_name(ch)
@@ -1808,9 +2332,13 @@ fn register_repetition_actions(
                 forest.action(&format!("{} -> ", opt_name), |_nodes| {
                     XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: vec![] }
                 });
-                // Base production - wrap in container
-                forest.action(&format!("{} -> {}", opt_name, base_name), |nodes| {
-                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
+                // Base production - pass through single nodes, wrap multiple
+                forest.action(&format!("{} -> {}", opt_name, base_name), |mut nodes| {
+                    if nodes.len() == 1 {
+                        nodes.pop().unwrap()
+                    } else {
+                        XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
+                    }
                 });
             }
         }

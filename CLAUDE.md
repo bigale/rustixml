@@ -15,19 +15,22 @@ rustixml is a Rust implementation of an iXML (Invisible XML) parser. iXML is a g
 
 **Test Suite**: `/home/bigale/repos/ixml/tests/correct/` (49 total tests)
 
-**Latest Results** (with marked CharClass semantic action fixes):
-- **22 PASSING** (44.9%)
-- **5 FAILING** (10.2%) - output mismatch
-- **13 TIMEOUTS** (26.5%)
-- **4 INPUT_ERRORS** (8.2%)
+**Latest Results** (with Unicode character handling fix):
+- **27 PASSING** (55.1%)
+- **11 FAILING** (22.4%) - output mismatch
+- **0 TIMEOUTS** (0%)
+- **6 INPUT_ERRORS** (12.2%)
 - **5 SKIP** (10.2%) - missing files or not applicable
 
-### Passing Tests (22)
+### Passing Tests (27)
 - `aaa` - Hidden marked literals
 - `arith` - Arithmetic expression with canonical XML formatting
 - `attribute-value` - XML entity escaping in attributes
+- `diary3` - Diary format parsing
 - `element-content` - XML entity escaping in text content
 - `empty-group` - Empty group handling
+- `expr` - Expression grammar with Unicode operators
+- `expr3`, `expr5`, `expr6` - Expression variants
 - `hash` - Separated repetitions with canonical formatting
 - `hex`, `hex1`, `hex3` - Hexadecimal parsing
 - `lf` - Marked hex characters (hidden linefeed)
@@ -44,40 +47,57 @@ rustixml is a Rust implementation of an iXML (Invisible XML) parser. iXML is a g
 
 ### Known Issues by Category
 
-#### 1. Failing Tests (5) - Output mismatch
+#### 1. Failing Tests (11) - Output mismatch
+- `address` - Address parsing (output format issue)
+- `expr1`, `expr2`, `expr4` - Expression variants
 - `json` - JSON parsing (output format issue)
+- `json1` - JSON variant
+- `poly` - Polynomial parsing
 - `ranges1` - Range syntax variation
 - `vcard` - VCard parsing
 - `xml` - XML parsing
 - `xml1` - XML parsing variant
 
-#### 2. Input Parse Errors (4)
+#### 2. Input Parse Errors (6)
+- `diary`, `diary2` - Diary format parsing
 - `email` - Character class matching issue
 - `unicode-classes` - Unicode class support
 - `unicode-range1` - Unicode range edge case
 - `xpath` - XPath parsing
 
-#### 3. Timeout Tests (13)
-**Timeout tests** (timeout after 2s): `address`, `diary`, `diary2`, `diary3`, `expr`, `expr1`, `expr2`, `expr3`, `expr4`, `expr5`, `expr6`, `json1`, `poly`
-
-These tests cause parser hangs, likely due to:
-- Left-recursion in grammar
-- Exponential parsing complexity
-- Inefficient handling of separated repetitions
-
 ## Recent Fixes
 
-### 1. Handwritten Recursive Descent Parser (COMPLETED - MAJOR IMPROVEMENT)
+### 1. Unicode Character Handling Fix (COMPLETED - MAJOR IMPROVEMENT)
+**Files**: `src/runtime_parser.rs` (lines 619-624, 836, 1959, 2028, 2148)
+
+**Problem**: Terminal matching used byte length (`s.len()`) instead of character count to detect single-character terminals. Multi-byte UTF-8 characters like `×` (U+00D7, 2 bytes) and `÷` (U+00F7, 2 bytes) were incorrectly treated as multi-character strings.
+
+**Root Cause**: The code `s.len() == 1` returns `false` for Unicode characters that are multiple bytes in UTF-8.
+
+**Fix**: Changed all occurrences to use `s.chars().count() == 1` for proper Unicode support:
+
+```rust
+// Before (broken for Unicode)
+s.len() == 1 && s.chars().next() == Some(ch)
+
+// After (correct)
+s.chars().count() == 1 && s.chars().next() == Some(ch)
+```
+
+**Impact**:
+- **Eliminated all 13 timeout tests** - they were actually failing instantly with grammar construction errors
+- **+5 new passing tests**: `diary3`, `expr`, `expr3`, `expr5`, `expr6`
+- Pass rate improved from **44.9% to 55.1%**
+
+This was the root cause of the "timeout" tests - the Unicode character bug caused terminal matching to fail, which resulted in "Missing Symbol" and "No Rule completes" errors.
+
+### 2. Handwritten Recursive Descent Parser (COMPLETED - MAJOR IMPROVEMENT)
 **Files**:
-- `src/grammar_parser.rs` (NEW - 302 lines) - Complete handwritten recursive descent parser
-- `src/grammar_ast.rs:1-11` - Re-export handwritten parser, comment out RustyLR code
+- `src/grammar_parser.rs` (302 lines) - Complete handwritten recursive descent parser
+- `src/grammar_ast.rs` - Grammar parser entry point
 - `src/lib.rs:16` - Add grammar_parser module
 
-**Problem**: The RustyLR GLR parser had exponential performance issues with grammars containing circular references and nonterminal repetitions. A 15-rule grammar (expr.ixml) took 16.8 seconds to parse and would hang indefinitely on slightly larger grammars.
-
-**Solution**: Replaced the entire grammar parser with a handwritten recursive descent parser that runs in linear time O(n).
-
-**Implementation**:
+**Features**:
 - Parser struct with token stream and position tracking
 - Recursive methods for each grammar element: `parse_grammar()`, `parse_rule()`, `parse_alternatives()`, `parse_sequence()`, `parse_factor()`, `parse_base_factor()`
 - Supports all iXML features: marks (`@`, `-`, `^`), repetitions (`+`, `*`, `?`, `++`, `**`), insertions (`+string`), hex chars (`#a`), character classes, grouping
@@ -85,26 +105,9 @@ These tests cause parser hangs, likely due to:
 - Marked literals: `@"text"`, `-#a` using `BaseFactor::marked_literal()`
 - EOF token filtering (lexer adds EOF, parser filters it out)
 
-**Performance Results**:
-- Full expr.ixml (16 rules): **16.8 seconds → 10.889 microseconds** (~1.5 million times faster!)
-- Simple grammars (8 rules): **9.214 microseconds** (previously timed out)
-- All test grammars parse in 2-21 microseconds
+**Performance**: All test grammars parse in 2-21 microseconds (O(n) linear time)
 
-**Test Impact**:
-- Fixed ALL 4 previously failing tests (`marked`, `para-test`, `ranges`, `tab`)
-- Fixed 1 previously input-error test (`empty-group`)
-- **Passing tests: 15 → 20** (+5 tests, +33% improvement)
-- **Failing tests: 4 → 0** (100% resolution)
-- Test suite completion: 30.6% → 40.8%
-
-This completely resolved the timeout issue that was blocking progress on the expr grammar tests.
-
-**Deprecation**: The old RustyLR GLR parsers have been deprecated to prevent accidental use:
-- `src/grammar.rs`, `src/grammar_v2.rs` - Deprecated with doc warnings
-- `src/lib.rs` - Added `#[deprecated]` attributes to `parse_ixml_grammar_old` and `parse_ixml_grammar_v2`
-- Module comments updated to indicate which parser is recommended
-
-The handwritten parser is now the default via `grammar_ast::parse_ixml_grammar()`.
+The grammar parser is accessed via `grammar_ast::parse_ixml_grammar()`.
 
 ### 2. Canonical iXML XML Serialization Format (COMPLETED)
 **Files**: `src/runtime_parser.rs:633-700`
@@ -336,28 +339,26 @@ cargo run --release --bin debug_testname
 ## Next Steps
 
 ### High Priority
-1. **Fix failing tests** (5 tests) - Debug output mismatch in `json`, `ranges1`, `vcard`, `xml`, `xml1`
-2. **Fix input parse errors** (4 tests) - Debug `email`, `unicode-classes`, `unicode-range1`, `xpath`
-
-### Medium Priority
-3. **Reduce timeout tests** (13 tests) - Investigate left-recursion and performance issues
-   - High-value targets: `expr` series (7 tests), `diary` series (3 tests)
-   - Complex tests: `json1`, `poly`
-4. **Performance optimization** - Improve Earley parser performance on complex grammars
+1. **Fix failing tests** (11 tests) - Debug output mismatch issues
+   - Expression variants: `expr1`, `expr2`, `expr4` (3 tests)
+   - JSON/Complex: `json`, `json1`, `poly` (3 tests)
+   - Other: `address`, `ranges1`, `vcard`, `xml`, `xml1` (5 tests)
+2. **Fix input parse errors** (6 tests) - Debug parse failures
+   - `diary`, `diary2` - Diary format issues
+   - `email`, `xpath` - Complex grammar issues
+   - `unicode-classes`, `unicode-range1` - Unicode support gaps
 
 ### Low Priority
-6. **Better error messages** - Improve grammar and parse error reporting
-7. **Complete skipped tests** - Handle edge cases in `attr-multipart`, `version-decl`, etc.
+3. **Better error messages** - Improve grammar and parse error reporting
+4. **Complete skipped tests** - Handle edge cases in `attr-multipart`, `version-decl`, etc.
 
 ## Architecture Notes
 
 ### Key Files
 - `src/lexer.rs` - Tokenizes iXML grammar text
 - `src/ast.rs` - AST node definitions for iXML grammars
-- `src/grammar_parser.rs` - **RECOMMENDED** Handwritten recursive descent parser (1.5M times faster!)
-- `src/grammar_ast.rs` - Grammar parser entry point (re-exports handwritten parser)
-- `src/grammar.rs` - **DEPRECATED** Old RustyLR GLR parser (character-based)
-- `src/grammar_v2.rs` - **DEPRECATED** Old RustyLR GLR parser (token-based)
+- `src/grammar_parser.rs` - Handwritten recursive descent parser for iXML grammars
+- `src/grammar_ast.rs` - Grammar parser entry point
 - `src/runtime_parser.rs` - Converts iXML AST to Earley grammar, handles XML generation
 - `src/testsuite_utils.rs` - Test infrastructure for conformance tests
 - `src/bin/safe_conformance_runner.rs` - Docker-safe test runner with panic catching
@@ -365,8 +366,7 @@ cargo run --release --bin debug_testname
 - `Dockerfile.test` - Docker container for safe test execution
 
 ### Dependencies
-- `earlgrey` - Earley parser implementation
-- `lr1-nostd` - LR(1) parser generator (via RustyLR `lr1!` macro)
+- `earlgrey` - Earley parser implementation for runtime input parsing
 
 ### Grammar Conversion Pipeline
 1. Lexer tokenizes iXML grammar → `Vec<Token>`
@@ -384,6 +384,217 @@ XML generation uses semantic actions registered on each grammar production. The 
 - `Attribute { name, value }` - Attribute (extracted by parent element)
 
 Hidden elements (`_hidden`) are skipped during XML serialization.
+
+## Reference Implementation: Markup Blitz
+
+The `/home/bigale/repos/markup-blitz/` repository contains Gunther Rademacher's production iXML implementation in Java. It passes all 5168 iXML conformance tests and serves as an authoritative reference for solving complexity issues.
+
+### Core Architecture Differences
+
+**Parser Algorithm**: Markup Blitz uses **LALR(1) + GLR**, not Earley parsing.
+- LALR(1) for parser table construction (deterministic where possible)
+- GLR (Generalized LR) for dynamic conflict resolution when ambiguity occurs
+- This provides better worst-case performance than Earley for many grammars
+
+**Key files**:
+- `src/main/java/de/bottlecaps/markup/blitz/transform/Generator.java` - LALR table generation
+- `src/main/java/de/bottlecaps/markup/blitz/transform/BNF.java` - Grammar transformation
+- `src/main/java/de/bottlecaps/markup/blitz/transform/ClassifyCharacters.java` - Character class optimization
+
+### Key Optimization Patterns
+
+#### 1. Character Class Partitioning (`ClassifyCharacters.java:390-417`)
+
+**Problem**: Multiple overlapping character classes create redundant terminal symbols.
+
+**Solution**: Partition all character sets in the grammar into non-overlapping equivalence classes before parser generation.
+
+```java
+// The classify() method computes disjoint character class partitions
+public static Set<RangeSet> classify(Collection<RangeSet> allRangeSets) {
+    // Each original charset becomes alternatives of these partitions
+    // Reduces terminal count, improves parsing speed
+}
+```
+
+**Example**: If grammar has `[a-z]` and `[a-m]`:
+- Creates partitions: `[a-m]` and `[n-z]`
+- `[a-z]` becomes `[a-m] | [n-z]`
+- `[a-m]` stays as `[a-m]`
+
+**Relevance to rustixml**: Could reduce Earley parser state explosion for grammars with many overlapping character classes.
+
+#### 2. Explicit BNF Transformation for Repetitions (`BNF.java:173-247`)
+
+**Problem**: Repetition operators (`*`, `+`, `**`, `++`) need efficient rule expansion.
+
+**Solution**: Generate explicit grammar rules with specific patterns:
+
+```java
+// ONE_OR_MORE (+): name: term | name term
+case ONE_OR_MORE:
+    // Creates left-recursive rule for efficiency
+
+// ZERO_OR_MORE (*): name: | name term
+case ZERO_OR_MORE:
+    // Empty alternative first
+
+// Separated ZERO_OR_MORE (**):
+// Creates TWO rules:
+//   listName: term | listName sep term
+//   name: | listName
+case ZERO_OR_MORE: // with separator
+    // Two-rule pattern handles the separator cleanly
+```
+
+**Relevance to rustixml**: The current separated repetition handling in `runtime_parser.rs` may benefit from this two-rule pattern.
+
+#### 3. Fork-based Conflict Resolution (`Generator.java:396-432`)
+
+**Problem**: LALR conflicts (shift-reduce, reduce-reduce) cause ambiguity.
+
+**Solution**: Create "forks" - linked pairs of alternative actions that GLR explores in parallel.
+
+```java
+// When conflicts detected, create fork chains
+conflicts.put(conflictToken, forkId);
+// GLR parser explores all fork branches, merges results
+```
+
+**Relevance to rustixml**: Earley naturally handles ambiguity, but understanding how GLR manages it may inform optimizations.
+
+#### 4. Compressed Parser Tables (`CompressedMap`, `Map2D`)
+
+**Problem**: Large transition tables consume memory and slow lookups.
+
+**Solution**: Tile-based compression with multiple indirection levels:
+- ASCII: Direct 128-entry lookup table (fast path)
+- BMP: Compressed tiled map
+- Supplementary: Range-based lookup
+
+**Relevance to rustixml**: Not directly applicable to Earley, but useful if considering parser algorithm changes.
+
+### Potential Improvements for rustixml
+
+Based on markup-blitz patterns, these approaches could help resolve the 13 timeout tests:
+
+1. **Character Class Optimization** (High impact)
+   - Implement character set partitioning before Earley grammar construction
+   - Reduces the number of terminal symbols and parser states
+   - File to modify: `src/runtime_parser.rs` character class handling
+
+2. **Two-Rule Separated Repetition Pattern** (Medium impact)
+   - Adopt the `listName`/`name` two-rule pattern from BNF.java
+   - May reduce ambiguity in separated repetitions
+   - Current implementation in `src/runtime_parser.rs:520-569`
+
+3. **Consider LALR+GLR** (High impact, major refactor)
+   - Would require replacing the `earlgrey` crate
+   - Better performance characteristics for the problematic grammars
+   - Existing Rust GLR implementations: `glr`, `santiago`
+
+4. **Nonterminal Inlining** (Medium impact)
+   - Markup-blitz's `CharsetCollector` inlines simple nonterminals that just wrap character classes
+   - Could reduce rule count and parser complexity
+
+### Why Earley May Struggle
+
+The timeout tests (`expr`, `diary`, `json1`, `poly`) likely suffer from:
+- **Cubic worst-case**: Earley is O(n³) for ambiguous grammars
+- **No table precomputation**: Earley builds parse forest dynamically
+- **Left recursion handling**: While Earley handles it, performance degrades
+- **Character-level parsing**: Without tokenization, creates many more states
+
+Markup-blitz avoids these by:
+- Precomputing LALR tables (O(1) state transitions)
+- GLR only forks on actual conflicts
+- Treating character classes as single tokens after partitioning
+
+## Implementation Plan: Earley Optimizations
+
+Based on markup-blitz patterns, adapted for our Earley-based runtime pipeline. These are grammar transformations that occur before feeding to the `earlgrey` crate.
+
+### Phase 1: Character Class Partitioning (High Impact) - IMPLEMENTED (DISABLED)
+
+**Why it helps Earley**: Reduces terminal count, fewer parser states, less ambiguity
+
+**Implementation location**: `src/runtime_parser.rs`
+- `RangeSet` data structure with union/intersection/minus operations
+- `classify_charclasses()` - compute disjoint partitions
+- `partition_charclasses_in_ast()` - AST transformation approach
+- Feature flag: `ENABLE_CHARCLASS_PARTITIONING` (currently `false`)
+
+**Status**: Implemented but disabled due to regression (22 PASS → 21 PASS). The `rangeset_to_charclass_content()` function generates partition content strings that aren't parsed correctly by the existing character class parser. Tests like `ranges` and `json` move from PASS/FAIL to INPUT_ERROR when enabled.
+
+**Steps implemented**:
+1. ✅ Collect all character classes from grammar into `Vec<RangeSet>`
+2. ✅ Compute disjoint partitions using set intersection/difference
+3. ✅ Transform AST: replace each CharClass with Group of partition alternatives
+4. ⚠️ Issue: Generated partition content strings cause parse errors
+
+**Example transformation**:
+```
+Grammar has: [a-z], [a-m], [0-9]
+Partitions: [a-m], [n-z], [0-9]
+[a-z] → ([a-m] | [n-z])  (as Group in AST)
+[a-m] → [a-m]  (unchanged)
+```
+
+**TODO**: Fix `rangeset_to_charclass_content()` to generate syntax compatible with `parse_char_class()`
+
+**Effort**: Medium (200-300 lines) - IMPLEMENTED, needs debugging
+**Expected impact**: High for grammars with overlapping character classes
+
+### Phase 2: Two-Rule Separated Repetition Pattern (Medium Impact)
+
+**Current approach**:
+```rust
+// base**(sep) creates:
+//   base_sep_star: | base_sep_plus
+//   base_sep_plus: base | base_sep_plus sep base
+```
+
+**Markup-blitz approach**:
+```java
+// base**(sep) creates:
+//   listName: base | listName sep base  (left-recursive list)
+//   name: | listName                    (optional wrapper)
+```
+
+**Implementation**: Modify `convert_factor()` in runtime_parser.rs
+
+**Effort**: Low (50-100 lines)
+**Expected impact**: Medium - may reduce ambiguity in separated repetitions
+
+### Phase 3: Nonterminal Inlining (Low-Medium Impact)
+
+**Problem**: Nonterminals that just wrap character classes add indirection
+
+**Optimization**: Inline simple nonterminals (single alternative, single character class) directly
+
+**Effort**: Medium (100-150 lines)
+**Expected impact**: Low-medium, reduces rule count
+
+### Strategies NOT Applicable to Earley
+
+- **Left-to-Right Recursion Conversion**: Earley handles left-recursion natively
+- **Fork-based Conflict Resolution**: Earley explores all parses naturally
+- **Compressed Parser Tables**: Earley doesn't use precomputed tables
+
+### Implementation Priority
+
+| Phase | Optimization | Effort | Impact | Status |
+|-------|-------------|--------|--------|--------|
+| 1 | Character Class Partitioning | Medium | High | IN PROGRESS |
+| 2 | Two-Rule Separated Repetition | Low | Medium | Pending |
+| 3 | Nonterminal Inlining | Medium | Low-Med | Optional |
+
+### Measurement Strategy
+
+Before/after each phase:
+1. Run Docker test suite, record timeout test behavior
+2. Measure grammar complexity (rules, terminals, overlaps)
+3. Document which grammars benefit most
 
 ## Test Environment
 - iXML test suite: `/home/bigale/repos/ixml/tests/correct/`

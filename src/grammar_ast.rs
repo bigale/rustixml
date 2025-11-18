@@ -3,8 +3,6 @@
 //! Now uses a handwritten recursive descent parser for fast, linear-time parsing
 //! (previously used RustyLR GLR which had exponential performance issues)
 
-use crate::ast::IxmlGrammar;
-
 // Re-export the handwritten parser's parse function
 pub use crate::grammar_parser::parse_ixml_grammar;
 

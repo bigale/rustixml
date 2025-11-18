@@ -43,19 +43,6 @@ fn main() {
     let mut results = Vec::new();
 
     for test_name in test_names {
-        // Skip known crashers and timeout tests
-        if test_name == "json1" || test_name == "poly"
-            || test_name.starts_with("expr")
-            || test_name.starts_with("diary")
-            || test_name == "address" {
-            let line = format!("{}: SKIP_TIMEOUT", test_name);
-            writeln!(output_file, "{}", line).ok();
-            output_file.flush().ok();
-            println!("{}", line);
-            results.push(line);
-            continue;
-        }
-
         let test_dir_owned = test_dir.to_string();
         let test_name_clone = test_name.clone();
 
