@@ -1714,29 +1714,54 @@ fn register_rule_actions(
                         if name == "_repeat_container" {
                             // Recursively unwrap any nested containers
                             for child in inner {
-                                if let XmlNode::Element { name: child_name, children: nested, attributes: child_attrs } = child {
-                                    if child_name == "_repeat_container" {
-                                        children.extend(nested);
-                                    } else {
-                                        children.push(XmlNode::Element { name: child_name, children: nested, attributes: child_attrs });
+                                match child {
+                                    XmlNode::Element { name: child_name, children: nested, attributes: child_attrs } => {
+                                        if child_name == "_repeat_container" {
+                                            // Recursively process nested container - extract attributes
+                                            for nested_child in nested {
+                                                match nested_child {
+                                                    XmlNode::Attribute { name: attr_name, value } => {
+                                                        attributes.push((attr_name, value));
+                                                    }
+                                                    other => children.push(other),
+                                                }
+                                            }
+                                        } else {
+                                            children.push(XmlNode::Element { name: child_name, children: nested, attributes: child_attrs });
+                                        }
                                     }
-                                } else {
-                                    children.push(child);
+                                    // Extract Attribute nodes and add to attributes list
+                                    XmlNode::Attribute { name: attr_name, value } => {
+                                        attributes.push((attr_name, value));
+                                    }
+                                    other => children.push(other),
                                 }
                             }
                         } else if name == "_hidden" || name == "group" {
                             // Promote all children from hidden elements and groups (not just text)
                             // Recursively unwrap any containers inside the hidden/group
                             for child in inner {
-                                if let XmlNode::Element { name: child_name, children: nested, attributes: child_attrs } = child {
-                                    if child_name == "_repeat_container" || child_name == "_hidden" || child_name == "group" {
-                                        // Recursively unwrap nested containers/groups
-                                        children.extend(nested);
-                                    } else {
-                                        children.push(XmlNode::Element { name: child_name, children: nested, attributes: child_attrs });
+                                match child {
+                                    XmlNode::Element { name: child_name, children: nested, attributes: child_attrs } => {
+                                        if child_name == "_repeat_container" || child_name == "_hidden" || child_name == "group" {
+                                            // Recursively unwrap nested containers/groups and extract attributes
+                                            for nested_child in nested {
+                                                match nested_child {
+                                                    XmlNode::Attribute { name: attr_name, value } => {
+                                                        attributes.push((attr_name, value));
+                                                    }
+                                                    other => children.push(other),
+                                                }
+                                            }
+                                        } else {
+                                            children.push(XmlNode::Element { name: child_name, children: nested, attributes: child_attrs });
+                                        }
                                     }
-                                } else {
-                                    children.push(child);
+                                    // Extract Attribute nodes and add to attributes list
+                                    XmlNode::Attribute { name: attr_name, value } => {
+                                        attributes.push((attr_name, value));
+                                    }
+                                    other => children.push(other),
                                 }
                             }
                         }
@@ -1790,13 +1815,20 @@ fn register_rule_actions(
                 Mark::Hidden => {
                     // Hidden: return children without wrapper
                     // Wrap in _hidden element that gets unwrapped by parent
-                    if children.len() == 1 {
+                    // Include attributes so they can be promoted to parent
+                    let attr_nodes: Vec<XmlNode> = attributes.into_iter()
+                        .map(|(n, v)| XmlNode::Attribute { name: n, value: v })
+                        .collect();
+                    if children.len() == 1 && attr_nodes.is_empty() {
                         children.into_iter().next().unwrap()
                     } else {
+                        // Combine attributes and children
+                        let mut all_children = attr_nodes;
+                        all_children.extend(children);
                         XmlNode::Element {
                             name: "_hidden".to_string(),
                             attributes: vec![],
-                            children,
+                            children: all_children,
                         }
                     }
                 }

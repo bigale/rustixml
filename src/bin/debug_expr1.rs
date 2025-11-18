@@ -8,13 +8,12 @@ fn main() {
         Ok(test) => {
             match run_test(&test) {
                 TestOutcome::Fail { expected, actual } => {
-                    println!("FAIL\nExpected:\n{}\nActual:\n{}", expected, actual);
+                    println!("FAIL\n\nExpected:\n{}\n\nActual:\n{}", expected, actual);
                 }
                 TestOutcome::Pass => println!("PASS"),
                 TestOutcome::GrammarParseError(e) => {
                     println!("Grammar error: {}", e);
-                    println!("\nGrammar was:");
-                    println!("{}", test.grammar);
+                    println!("\nGrammar was:\n{}", test.grammar);
                 }
                 TestOutcome::InputParseError(e) => println!("Input error: {}", e),
                 TestOutcome::Skip(r) => println!("Skip: {}", r),
