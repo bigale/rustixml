@@ -1797,8 +1797,13 @@ fn register_rule_actions(
                                     children: inner,
                                 }
                             }
-                            // For regular elements: keep as-is
-                            other => other,
+                            // For regular elements: wrap in element with promoted name
+                            // This handles the case where hidden rule returned single child without _hidden wrapper
+                            other => XmlNode::Element {
+                                name: factor_base_name.to_string(),
+                                attributes: vec![],
+                                children: vec![other],
+                            },
                         };
                         // Add directly to children - no wrapper needed
                         children.push(promoted_element);
