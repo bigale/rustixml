@@ -6,28 +6,22 @@ fn main() {
 
     match read_simple_test(test_dir, test_name) {
         Ok(test) => {
-            println!("Grammar:");
-            println!("{}", test.grammar);
-            println!("\nInput:");
-            println!("{}", test.input);
-            if let Some(expected) = &test.expected_xml {
-                println!("\nExpected output:");
-                println!("{}", expected);
-            }
-            println!("\n--- Running test ---");
+            println!("Grammar:\n{}", test.grammar);
+            println!("\nInput: {:?}", test.input);
+            println!("Input chars: {:?}", test.input.chars().collect::<Vec<_>>());
 
             match run_test(&test) {
                 TestOutcome::Fail { expected, actual } => {
-                    println!("FAIL\nExpected:\n{}\nActual:\n{}", expected, actual);
+                    println!("\nFAIL\n\nExpected:\n{}\n\nActual:\n{}", expected, actual);
                 }
-                TestOutcome::Pass => println!("PASS"),
+                TestOutcome::Pass => println!("\nPASS"),
                 TestOutcome::GrammarParseError(e) => {
-                    println!("Grammar error: {}", e);
+                    println!("\nGrammar error: {}", e);
                 }
                 TestOutcome::InputParseError(e) => {
-                    println!("Input error: {}", e);
+                    println!("\nInput error: {}", e);
                 }
-                TestOutcome::Skip(r) => println!("Skip: {}", r),
+                TestOutcome::Skip(r) => println!("\nSkip: {}", r),
             }
         }
         Err(e) => eprintln!("Error loading test: {}", e),

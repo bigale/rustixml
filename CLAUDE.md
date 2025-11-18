@@ -15,59 +15,78 @@ rustixml is a Rust implementation of an iXML (Invisible XML) parser. iXML is a g
 
 **Test Suite**: `/home/bigale/repos/ixml/tests/correct/` (49 total tests)
 
-**Latest Results** (with Unicode character handling fix):
-- **27 PASSING** (55.1%)
-- **11 FAILING** (22.4%) - output mismatch
+**Latest Results** (with self-closing root element fix):
+- **41 PASSING** (83.7%)
+- **0 FAILING** (0%)
 - **0 TIMEOUTS** (0%)
-- **6 INPUT_ERRORS** (12.2%)
+- **3 INPUT_ERRORS** (6.1%)
 - **5 SKIP** (10.2%) - missing files or not applicable
 
-### Passing Tests (27)
+### Passing Tests (41)
 - `aaa` - Hidden marked literals
+- `address` - Address parsing
 - `arith` - Arithmetic expression with canonical XML formatting
 - `attribute-value` - XML entity escaping in attributes
-- `diary3` - Diary format parsing
+- `diary`, `diary2`, `diary3` - Diary format parsing
 - `element-content` - XML entity escaping in text content
+- `email` - Email address parsing with separated repetitions
 - `empty-group` - Empty group handling
 - `expr` - Expression grammar with Unicode operators
-- `expr3`, `expr5`, `expr6` - Expression variants
+- `expr1`, `expr2`, `expr3`, `expr4`, `expr5`, `expr6` - Expression variants
 - `hash` - Separated repetitions with canonical formatting
 - `hex`, `hex1`, `hex3` - Hexadecimal parsing
+- `json`, `json1` - JSON parsing
 - `lf` - Marked hex characters (hidden linefeed)
 - `marked` - Marked literals with attribute marks
 - `nested-comment` - Nested brace comments
 - `para-test` - Multi-paragraph parsing with character classes
+- `poly` - Polynomial parsing
 - `program` - Complex grammar structure
 - `range`, `range-comments` - Character ranges
-- `ranges` - Character range edge cases
+- `ranges`, `ranges1` - Character range edge cases
 - `string` - String literals
 - `tab` - Tab character handling
 - `test` - Basic grammar test
 - `unicode-range`, `unicode-range2` - Unicode character ranges
+- `vcard` - VCard parsing
+- `xml`, `xml1` - XML parsing
 
 ### Known Issues by Category
 
-#### 1. Failing Tests (11) - Output mismatch
-- `address` - Address parsing (output format issue)
-- `expr1`, `expr2`, `expr4` - Expression variants
-- `json` - JSON parsing (output format issue)
-- `json1` - JSON variant
-- `poly` - Polynomial parsing
-- `ranges1` - Range syntax variation
-- `vcard` - VCard parsing
-- `xml` - XML parsing
-- `xml1` - XML parsing variant
-
-#### 2. Input Parse Errors (6)
-- `diary`, `diary2` - Diary format parsing
-- `email` - Character class matching issue
-- `unicode-classes` - Unicode class support
+#### Input Parse Errors (3)
+- `unicode-classes` - Unicode class support (requires Unicode category matching)
 - `unicode-range1` - Unicode range edge case
-- `xpath` - XPath parsing
+- `xpath` - XPath parsing (complex grammar)
 
 ## Recent Fixes
 
-### 1. Unicode Character Handling Fix (COMPLETED - MAJOR IMPROVEMENT)
+### 1. Self-Closing Root Element Fix (COMPLETED)
+**Files**: `src/runtime_parser.rs` (lines 1593-1602)
+
+**Problem**: Self-closing root elements were missing their closing `/>`. The output was `<email user='...' host='...'` instead of `<email user='...' host='...'/>`.
+
+**Root Cause**: The XML serialization code assumed all empty elements would have a parent to add the closing `/>`, but root elements have no parent.
+
+**Fix**: Added `is_root` check in the empty children case to output complete self-closing tag for root elements:
+
+```rust
+if children.is_empty() {
+    if is_root {
+        // Root element needs complete self-closing tag
+        format!("<{}{}/>", name, attrs_str)
+    } else {
+        // Non-root: parent adds />
+        format!("<{}{}", name, attrs_str)
+    }
+}
+```
+
+**Impact**:
+- **+14 new passing tests**: `email`, `json`, `json1`, `poly`, `vcard`, `xml`, `xml1`, `address`, `expr1`, `expr2`, `expr4`, `ranges1`, `diary`, `diary2`
+- Pass rate improved from **55.1% to 83.7%**
+- **All output mismatch failures resolved**
+
+### 2. Unicode Character Handling Fix (COMPLETED - MAJOR IMPROVEMENT)
 **Files**: `src/runtime_parser.rs` (lines 619-624, 836, 1959, 2028, 2148)
 
 **Problem**: Terminal matching used byte length (`s.len()`) instead of character count to detect single-character terminals. Multi-byte UTF-8 characters like `×` (U+00D7, 2 bytes) and `÷` (U+00F7, 2 bytes) were incorrectly treated as multi-character strings.
@@ -339,18 +358,14 @@ cargo run --release --bin debug_testname
 ## Next Steps
 
 ### High Priority
-1. **Fix failing tests** (11 tests) - Debug output mismatch issues
-   - Expression variants: `expr1`, `expr2`, `expr4` (3 tests)
-   - JSON/Complex: `json`, `json1`, `poly` (3 tests)
-   - Other: `address`, `ranges1`, `vcard`, `xml`, `xml1` (5 tests)
-2. **Fix input parse errors** (6 tests) - Debug parse failures
-   - `diary`, `diary2` - Diary format issues
-   - `email`, `xpath` - Complex grammar issues
-   - `unicode-classes`, `unicode-range1` - Unicode support gaps
+1. **Fix input parse errors** (3 tests) - Debug parse failures
+   - `unicode-classes` - Requires Unicode category matching (Ll, Lu, etc.)
+   - `unicode-range1` - Unicode range edge case
+   - `xpath` - Complex grammar with advanced features
 
 ### Low Priority
-3. **Better error messages** - Improve grammar and parse error reporting
-4. **Complete skipped tests** - Handle edge cases in `attr-multipart`, `version-decl`, etc.
+2. **Better error messages** - Improve grammar and parse error reporting
+3. **Complete skipped tests** - Handle edge cases in `attr-multipart`, `version-decl`, etc.
 
 ## Architecture Notes
 

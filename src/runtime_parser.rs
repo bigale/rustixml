@@ -177,93 +177,132 @@ impl RangeSet {
     }
 }
 
+/// Split character class content by separator characters while respecting quoted strings
+/// In character classes, `;`, `,`, and `|` are separators, but not inside quotes
+fn split_charclass_content(content: &str) -> Vec<String> {
+    let mut elements = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = false;
+    let mut quote_char = '"';
+
+    for ch in content.chars() {
+        if in_quote {
+            current.push(ch);
+            if ch == quote_char {
+                in_quote = false;
+            }
+        } else if ch == '"' || ch == '\'' {
+            in_quote = true;
+            quote_char = ch;
+            current.push(ch);
+        } else if ch == ';' || ch == ',' || ch == '|' {
+            // Separator - save current element if non-empty
+            let trimmed = current.trim().to_string();
+            if !trimmed.is_empty() {
+                elements.push(trimmed);
+            }
+            current = String::new();
+        } else {
+            current.push(ch);
+        }
+    }
+
+    // Don't forget the last element
+    let trimmed = current.trim().to_string();
+    if !trimmed.is_empty() {
+        elements.push(trimmed);
+    }
+
+    elements
+}
+
 /// Parse a character class content string into a RangeSet
 /// This handles the same formats as parse_char_class but returns a RangeSet
 fn charclass_to_rangeset(content: &str) -> RangeSet {
     let mut result = RangeSet::new();
 
-    // Split by semicolon to get inclusion and exclusion parts
-    let parts: Vec<&str> = content.split(';').collect();
+    // Split while respecting quoted strings
+    let elements = split_charclass_content(content);
 
-    for part in parts {
-        let part = part.trim();
-        if part.is_empty() {
+    for element in elements {
+        let element = element.trim();
+        if element.is_empty() {
             continue;
         }
 
-        // Split by comma or pipe to get individual elements
-        let elements: Vec<&str> = part.split(|c| c == ',' || c == '|').map(|s| s.trim()).collect();
+        // Check for hex character range: #30-#39
+        if element.starts_with('#') && element.contains('-') {
+            if let Some(dash_pos) = element[1..].find('-') {
+                let actual_dash_pos = dash_pos + 1;
+                let start_part = &element[..actual_dash_pos];
+                let end_part = &element[actual_dash_pos + 1..];
 
-        for element in elements {
-            let element = element.trim();
-            if element.is_empty() {
-                continue;
-            }
-
-            // Check for hex character range: #30-#39
-            if element.starts_with('#') && element.contains('-') {
-                if let Some(dash_pos) = element[1..].find('-') {
-                    let actual_dash_pos = dash_pos + 1;
-                    let start_part = &element[..actual_dash_pos];
-                    let end_part = &element[actual_dash_pos + 1..];
-
-                    if end_part.starts_with('#') {
-                        if let (Some(start), Some(end)) = (parse_hex_char(start_part), parse_hex_char(end_part)) {
-                            result.add_range(start, end);
-                            continue;
-                        }
+                if end_part.starts_with('#') {
+                    if let (Some(start), Some(end)) = (parse_hex_char(start_part), parse_hex_char(end_part)) {
+                        result.add_range(start, end);
+                        continue;
                     }
                 }
-                // Not a range, treat as single hex char
-                if let Some(ch) = parse_hex_char(element) {
-                    result.add_char(ch);
-                }
             }
-            // Check for quoted character range: "a"-"z"
-            else if (element.starts_with('\'') || element.starts_with('"')) && element.contains('-') {
-                let quote = if element.starts_with('\'') { '\'' } else { '"' };
-                if let Some(first_close) = element[1..].find(quote) {
-                    let first_close = first_close + 1;
-                    let after_close = &element[first_close + 1..];
-                    if after_close.starts_with('-') && after_close.len() > 1 {
-                        let after_dash = &after_close[1..];
-                        if after_dash.starts_with('\'') || after_dash.starts_with('"') {
-                            let start_str = &element[1..first_close];
-                            let start_char = start_str.chars().next();
-                            let end_quote = if after_dash.starts_with('\'') { '\'' } else { '"' };
-                            if let Some(end_close) = after_dash[1..].find(end_quote) {
-                                let end_str = &after_dash[1..end_close + 1];
-                                let end_char = end_str.chars().next();
-                                if let (Some(start), Some(end)) = (start_char, end_char) {
-                                    result.add_range(start, end);
-                                    continue;
-                                }
+            // Not a range, treat as single hex char
+            if let Some(ch) = parse_hex_char(element) {
+                result.add_char(ch);
+            }
+        }
+        // Check for quoted character range: "a"-"z"
+        else if (element.starts_with('\'') || element.starts_with('"')) && element.contains('-') {
+            let quote = if element.starts_with('\'') { '\'' } else { '"' };
+            if let Some(first_close) = element[1..].find(quote) {
+                let first_close = first_close + 1;
+                let after_close = &element[first_close + 1..];
+                if after_close.starts_with('-') && after_close.len() > 1 {
+                    let after_dash = &after_close[1..];
+                    if after_dash.starts_with('\'') || after_dash.starts_with('"') {
+                        let start_str = &element[1..first_close];
+                        let start_char = start_str.chars().next();
+                        let end_quote = if after_dash.starts_with('\'') { '\'' } else { '"' };
+                        if let Some(end_close) = after_dash[1..].find(end_quote) {
+                            let end_str = &after_dash[1..end_close + 1];
+                            let end_char = end_str.chars().next();
+                            if let (Some(start), Some(end)) = (start_char, end_char) {
+                                result.add_range(start, end);
+                                continue;
                             }
                         }
                     }
                 }
-                // Not a range, treat as quoted characters
-                let inner = element.trim_matches('\'').trim_matches('"');
-                for ch in inner.chars() {
-                    result.add_char(ch);
-                }
             }
-            // Single hex character
-            else if element.starts_with('#') {
-                if let Some(ch) = parse_hex_char(element) {
-                    result.add_char(ch);
-                }
+            // Not a range, treat as quoted characters
+            // Only trim the quote character that was actually used
+            let inner = if element.starts_with('\'') {
+                element.trim_matches('\'')
+            } else {
+                element.trim_matches('"')
+            };
+            for ch in inner.chars() {
+                result.add_char(ch);
             }
-            // Single quoted string
-            else if (element.starts_with('\'') && element.ends_with('\'')) ||
-                    (element.starts_with('"') && element.ends_with('"')) {
-                let inner = element.trim_matches('\'').trim_matches('"');
-                for ch in inner.chars() {
-                    result.add_char(ch);
-                }
-            }
-            // Unicode category - skip for now (handled separately)
         }
+        // Single hex character
+        else if element.starts_with('#') {
+            if let Some(ch) = parse_hex_char(element) {
+                result.add_char(ch);
+            }
+        }
+        // Single quoted string
+        else if (element.starts_with('\'') && element.ends_with('\'')) ||
+                (element.starts_with('"') && element.ends_with('"')) {
+            // Only trim the quote character that was actually used
+            let inner = if element.starts_with('\'') {
+                element.trim_matches('\'')
+            } else {
+                element.trim_matches('"')
+            };
+            for ch in inner.chars() {
+                result.add_char(ch);
+            }
+        }
+        // Unicode category - skip for now (handled separately)
     }
 
     result
@@ -990,92 +1029,99 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
     let mut unicode_categories = Vec::new();
 
     let content = content.trim();
-    let parts: Vec<&str> = content.split(';').map(|s| s.trim()).collect();
 
-    for part in parts {
-        // Split by comma or pipe to get individual elements
-        // In character classes, both , and | separate alternatives (OR)
-        let elements: Vec<&str> = part.split(|c| c == ',' || c == '|').map(|s| s.trim()).collect();
+    // Use quote-aware splitting that handles all separators (;, ,, |) properly
+    let elements = split_charclass_content(content);
 
-        for element in elements {
-            // Check for hex character range: #30-#39
-            if element.starts_with('#') && element.contains('-') {
-                // Try to parse as hex range
-                if let Some(dash_pos) = element[1..].find('-') {
-                    let actual_dash_pos = dash_pos + 1;
-                    let start_part = &element[..actual_dash_pos];
-                    let end_part = &element[actual_dash_pos + 1..];
+    for element in &elements {
+        let element = element.as_str();
+        // Check for hex character range: #30-#39
+        if element.starts_with('#') && element.contains('-') {
+            // Try to parse as hex range
+            if let Some(dash_pos) = element[1..].find('-') {
+                let actual_dash_pos = dash_pos + 1;
+                let start_part = &element[..actual_dash_pos];
+                let end_part = &element[actual_dash_pos + 1..];
 
-                    if end_part.starts_with('#') {
-                        let start_char = parse_hex_char(start_part);
-                        let end_char = parse_hex_char(end_part);
-                        if let (Some(start), Some(end)) = (start_char, end_char) {
-                            ranges.push((start, end));
-                            continue;
-                        }
+                if end_part.starts_with('#') {
+                    let start_char = parse_hex_char(start_part);
+                    let end_char = parse_hex_char(end_part);
+                    if let (Some(start), Some(end)) = (start_char, end_char) {
+                        ranges.push((start, end));
+                        continue;
                     }
                 }
-                // If not a range, treat as single hex char
-                if let Some(ch) = parse_hex_char(element) {
-                    chars.push(ch);
-                }
             }
-            // Check for quoted character range: "a"-"z" or 'a'-'z'
-            else if (element.starts_with('\'') || element.starts_with('"')) && element.contains('-') {
-                // Look for pattern: "x"-"y" or 'x'-'y'
-                let quote = if element.starts_with('\'') { '\'' } else { '"' };
+            // If not a range, treat as single hex char
+            if let Some(ch) = parse_hex_char(element) {
+                chars.push(ch);
+            }
+        }
+        // Check for quoted character range: "a"-"z" or 'a'-'z'
+        else if (element.starts_with('\'') || element.starts_with('"')) && element.contains('-') {
+            // Look for pattern: "x"-"y" or 'x'-'y'
+            let quote = if element.starts_with('\'') { '\'' } else { '"' };
 
-                // Find the closing quote
-                if let Some(first_close) = element[1..].find(quote) {
-                    let first_close = first_close + 1;
+            // Find the closing quote
+            if let Some(first_close) = element[1..].find(quote) {
+                let first_close = first_close + 1;
 
-                    // Check if there's a dash after the closing quote
-                    let after_close = &element[first_close + 1..];
-                    if after_close.starts_with('-') && after_close.len() > 1 {
-                        // Check if there's another quoted char after the dash
-                        let after_dash = &after_close[1..];
-                        if after_dash.starts_with('\'') || after_dash.starts_with('"') {
-                            // This is a range
-                            let start_str = &element[1..first_close];
-                            let start_char = start_str.chars().next();
+                // Check if there's a dash after the closing quote
+                let after_close = &element[first_close + 1..];
+                if after_close.starts_with('-') && after_close.len() > 1 {
+                    // Check if there's another quoted char after the dash
+                    let after_dash = &after_close[1..];
+                    if after_dash.starts_with('\'') || after_dash.starts_with('"') {
+                        // This is a range
+                        let start_str = &element[1..first_close];
+                        let start_char = start_str.chars().next();
 
-                            let end_quote = if after_dash.starts_with('\'') { '\'' } else { '"' };
-                            if let Some(end_close) = after_dash[1..].find(end_quote) {
-                                let end_str = &after_dash[1..end_close + 1];
-                                let end_char = end_str.chars().next();
+                        let end_quote = if after_dash.starts_with('\'') { '\'' } else { '"' };
+                        if let Some(end_close) = after_dash[1..].find(end_quote) {
+                            let end_str = &after_dash[1..end_close + 1];
+                            let end_char = end_str.chars().next();
 
-                                if let (Some(start), Some(end)) = (start_char, end_char) {
-                                    ranges.push((start, end));
-                                    continue;
-                                }
+                            if let (Some(start), Some(end)) = (start_char, end_char) {
+                                ranges.push((start, end));
+                                continue;
                             }
                         }
                     }
                 }
+            }
 
-                // Not a range, treat as quoted string of individual characters
-                let inner = element.trim_matches('\'').trim_matches('"');
-                for ch in inner.chars() {
-                    chars.push(ch);
-                }
+            // Not a range, treat as quoted string of individual characters
+            // Only trim the quote character that was actually used
+            let inner = if element.starts_with('\'') {
+                element.trim_matches('\'')
+            } else {
+                element.trim_matches('"')
+            };
+            for ch in inner.chars() {
+                chars.push(ch);
             }
-            // Single hex character
-            else if element.starts_with('#') {
-                if let Some(ch) = parse_hex_char(element) {
-                    chars.push(ch);
-                }
+        }
+        // Single hex character
+        else if element.starts_with('#') {
+            if let Some(ch) = parse_hex_char(element) {
+                chars.push(ch);
             }
-            // Single quoted string (characters)
-            else if (element.starts_with('\'') && element.ends_with('\'')) || (element.starts_with('"') && element.ends_with('"')) {
-                let inner = element.trim_matches('\'').trim_matches('"');
-                for ch in inner.chars() {
-                    chars.push(ch);
-                }
+        }
+        // Single quoted string (characters)
+        else if (element.starts_with('\'') && element.ends_with('\'')) || (element.starts_with('"') && element.ends_with('"')) {
+            // Only trim the quote character that was actually used
+            let inner = if element.starts_with('\'') {
+                element.trim_matches('\'')
+            } else {
+                element.trim_matches('"')
+            };
+            for ch in inner.chars() {
+                chars.push(ch);
             }
-            // Unicode category
-            else if element.len() == 1 || element.len() == 2 {
-                unicode_categories.push(element.to_string());
-            }
+        }
+        // Unicode category
+        else if element.len() == 1 || element.len() == 2 {
+            unicode_categories.push(element.to_string());
         }
     }
 
@@ -1443,10 +1489,11 @@ impl XmlNode {
         match node {
             XmlNode::Text(_) => true,
             XmlNode::Element { name, .. } => {
-                // Hidden and promoted elements unwrap to inline content
-                // Note: _repeat_container and group are unwrapped but not inline
-                // because they may contain elements that need canonical formatting
+                // Hidden, promoted, and container elements are treated as inline
+                // Groups and _repeat_containers unwrap their children directly,
+                // so they should be considered inline for transition purposes
                 name == "__hidden__" || name == "__promoted__" || name == "_hidden" || name == "_promoted"
+                    || name == "group" || name == "_repeat_container"
             }
             XmlNode::Attribute { .. } => true,
         }
@@ -1544,9 +1591,15 @@ impl XmlNode {
                 let only_text = children.iter().all(|c| Self::is_inline_content(c));
 
                 if children.is_empty() {
-                    // Self-closing element - in canonical format, just the opening tag without >
-                    // The /> will be added by the parent when iterating children
-                    format!("<{}{}", name, attrs_str)
+                    // Self-closing element
+                    if is_root {
+                        // Root element needs complete self-closing tag
+                        format!("<{}{}/>", name, attrs_str)
+                    } else {
+                        // Non-root: in canonical format, just the opening tag without >
+                        // The /> will be added by the parent when iterating children
+                        format!("<{}{}", name, attrs_str)
+                    }
                 } else if only_text {
                     // Element with only text content - use compact format
                     // Closing tag gets final > only if this is the root element
@@ -1775,8 +1828,8 @@ fn register_rule_actions(
                             for child in inner {
                                 match child {
                                     XmlNode::Element { name: child_name, children: nested, attributes: child_attrs } => {
-                                        if child_name == "_repeat_container" {
-                                            // Recursively process nested container - extract attributes
+                                        if child_name == "_repeat_container" || child_name == "_hidden" || child_name == "group" {
+                                            // Recursively process nested container, hidden element, or group - extract attributes
                                             for nested_child in nested {
                                                 match nested_child {
                                                     XmlNode::Attribute { name: attr_name, value } => {
@@ -1898,7 +1951,12 @@ fn register_rule_actions(
                 }
                 Mark::Attribute => {
                     // Attribute: extract text content and create Attribute node
-                    let text_value = extract_text_from_nodes(&children);
+                    // Include both children text and collected attribute values
+                    // (for cases like @constant: @n. where nested attrs go to attributes vec)
+                    let mut text_value = extract_text_from_nodes(&children);
+                    for (_, attr_value) in &attributes {
+                        text_value.push_str(attr_value);
+                    }
                     XmlNode::Attribute {
                         name: rule_name_for_closure.clone(),
                         value: text_value,
