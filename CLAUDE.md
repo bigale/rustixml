@@ -15,14 +15,14 @@ rustixml is a Rust implementation of an iXML (Invisible XML) parser. iXML is a g
 
 **Test Suite**: `/home/bigale/repos/ixml/tests/correct/` (49 total tests)
 
-**Latest Results** (with self-closing root element fix):
-- **41 PASSING** (83.7%)
+**Latest Results** (with mixed hex/literal character range support):
+- **42 PASSING** (85.7%)
 - **0 FAILING** (0%)
 - **0 TIMEOUTS** (0%)
-- **3 INPUT_ERRORS** (6.1%)
+- **2 INPUT_ERRORS** (4.1%)
 - **5 SKIP** (10.2%) - missing files or not applicable
 
-### Passing Tests (41)
+### Passing Tests (42)
 - `aaa` - Hidden marked literals
 - `address` - Address parsing
 - `arith` - Arithmetic expression with canonical XML formatting
@@ -47,16 +47,15 @@ rustixml is a Rust implementation of an iXML (Invisible XML) parser. iXML is a g
 - `string` - String literals
 - `tab` - Tab character handling
 - `test` - Basic grammar test
-- `unicode-range`, `unicode-range2` - Unicode character ranges
+- `unicode-range`, `unicode-range1`, `unicode-range2` - Unicode character ranges
 - `vcard` - VCard parsing
 - `xml`, `xml1` - XML parsing
 
 ### Known Issues by Category
 
-#### Input Parse Errors (3)
-- `unicode-classes` - Unicode class support (requires Unicode category matching)
-- `unicode-range1` - Unicode range edge case
-- `xpath` - XPath parsing (complex grammar)
+#### Input Parse Errors (2)
+- `unicode-classes` - Unicode class support (requires `unicode-general-category` crate for Unicode General Category matching like Ll, Lu, L, N, P, Cc, Cf)
+- `xpath` - XPath parsing (grammar requires mandatory whitespace around comparison operators)
 
 ## Recent Fixes
 
@@ -358,10 +357,9 @@ cargo run --release --bin debug_testname
 ## Next Steps
 
 ### High Priority
-1. **Fix input parse errors** (3 tests) - Debug parse failures
-   - `unicode-classes` - Requires Unicode category matching (Ll, Lu, etc.)
-   - `unicode-range1` - Unicode range edge case
-   - `xpath` - Complex grammar with advanced features
+1. **Fix input parse errors** (2 tests) - Debug parse failures
+   - `unicode-classes` - Requires `unicode-general-category` crate for Unicode General Category matching (Ll, Lu, L, N, P, Cc, Cf)
+   - `xpath` - Grammar requires mandatory whitespace around comparison operators; test input `a[.!='']` has no spaces around `!=`
 
 ### Low Priority
 2. **Better error messages** - Improve grammar and parse error reporting
