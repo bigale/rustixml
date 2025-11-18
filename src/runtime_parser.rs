@@ -230,7 +230,7 @@ fn charclass_to_rangeset(content: &str) -> RangeSet {
             continue;
         }
 
-        // Check for hex character range: #30-#39
+        // Check for hex character range: #30-#39 or #1-"÷"
         if element.starts_with('#') && element.contains('-') {
             if let Some(dash_pos) = element[1..].find('-') {
                 let actual_dash_pos = dash_pos + 1;
@@ -238,9 +238,21 @@ fn charclass_to_rangeset(content: &str) -> RangeSet {
                 let end_part = &element[actual_dash_pos + 1..];
 
                 if end_part.starts_with('#') {
+                    // Hex-to-hex range: #30-#39
                     if let (Some(start), Some(end)) = (parse_hex_char(start_part), parse_hex_char(end_part)) {
                         result.add_range(start, end);
                         continue;
+                    }
+                } else if end_part.starts_with('"') || end_part.starts_with('\'') {
+                    // Hex-to-literal range: #1-"÷"
+                    let quote = if end_part.starts_with('"') { '"' } else { '\'' };
+                    if let Some(close_pos) = end_part[1..].find(quote) {
+                        let end_str = &end_part[1..close_pos + 1];
+                        let end_char = end_str.chars().next();
+                        if let (Some(start), Some(end)) = (parse_hex_char(start_part), end_char) {
+                            result.add_range(start, end);
+                            continue;
+                        }
                     }
                 }
             }
@@ -1035,7 +1047,7 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
 
     for element in &elements {
         let element = element.as_str();
-        // Check for hex character range: #30-#39
+        // Check for hex character range: #30-#39 or #1-"÷"
         if element.starts_with('#') && element.contains('-') {
             // Try to parse as hex range
             if let Some(dash_pos) = element[1..].find('-') {
@@ -1044,11 +1056,23 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
                 let end_part = &element[actual_dash_pos + 1..];
 
                 if end_part.starts_with('#') {
+                    // Hex-to-hex range: #30-#39
                     let start_char = parse_hex_char(start_part);
                     let end_char = parse_hex_char(end_part);
                     if let (Some(start), Some(end)) = (start_char, end_char) {
                         ranges.push((start, end));
                         continue;
+                    }
+                } else if end_part.starts_with('"') || end_part.starts_with('\'') {
+                    // Hex-to-literal range: #1-"÷"
+                    let quote = if end_part.starts_with('"') { '"' } else { '\'' };
+                    if let Some(close_pos) = end_part[1..].find(quote) {
+                        let end_str = &end_part[1..close_pos + 1];
+                        let end_char = end_str.chars().next();
+                        if let (Some(start), Some(end)) = (parse_hex_char(start_part), end_char) {
+                            ranges.push((start, end));
+                            continue;
+                        }
                     }
                 }
             }
