@@ -1444,6 +1444,8 @@ impl XmlNode {
             XmlNode::Text(_) => true,
             XmlNode::Element { name, .. } => {
                 // Hidden and promoted elements unwrap to inline content
+                // Note: _repeat_container and group are unwrapped but not inline
+                // because they may contain elements that need canonical formatting
                 name == "__hidden__" || name == "__promoted__" || name == "_hidden" || name == "_promoted"
             }
             XmlNode::Attribute { .. } => true,
@@ -1453,13 +1455,70 @@ impl XmlNode {
     fn to_xml_internal(&self, depth: usize, is_root: bool, compact_mode: bool) -> String {
         match self {
             XmlNode::Element { name, attributes, children } => {
-                // Skip rendering hidden and promoted wrapper elements
-                // Just render their children directly
-                if name == "__hidden__" || name == "__promoted__" || name == "_hidden" || name == "_promoted" {
-                    return children.iter()
-                        .map(|child| child.to_xml_internal(depth, false, compact_mode))
-                        .collect::<Vec<_>>()
-                        .join("");
+                // Skip rendering hidden, promoted, repeat container, and group wrapper elements
+                // Just render their children directly, but apply canonical formatting
+                if name == "__hidden__" || name == "__promoted__" || name == "_hidden" || name == "_promoted"
+                    || name == "_repeat_container" || name == "group"
+                {
+                    if compact_mode {
+                        return children.iter()
+                            .map(|child| child.to_xml_internal(depth, false, compact_mode))
+                            .collect::<Vec<_>>()
+                            .join("");
+                    }
+
+                    // For canonical format, we need to apply element-to-text transition formatting
+                    // when unwrapping containers
+                    let indent = "   ".repeat(depth);
+                    let mut result = String::new();
+
+                    for (i, child) in children.iter().enumerate() {
+                        let curr_is_inline = Self::is_inline_content(child);
+
+                        if i > 0 {
+                            let prev_child = &children[i - 1];
+                            let prev_is_inline = Self::is_inline_content(prev_child);
+
+                            if !prev_is_inline && curr_is_inline {
+                                // Previous was element, current is inline
+                                // Check if there's an element after this inline content
+                                let has_element_after = children.iter().skip(i + 1)
+                                    .any(|c| !Self::is_inline_content(c));
+
+                                if has_element_after {
+                                    // Need to add newline + indent + > after previous element
+                                    result.push('\n');
+                                    result.push_str(&indent);
+                                    if Self::is_self_closing(prev_child) {
+                                        result.push_str("/>");
+                                    } else {
+                                        result.push('>');
+                                    }
+                                } else {
+                                    // No more elements, close previous inline
+                                    if Self::is_self_closing(prev_child) {
+                                        result.push_str("/>");
+                                    } else {
+                                        result.push('>');
+                                    }
+                                }
+                            } else if !prev_is_inline && !curr_is_inline {
+                                // Previous was element, current is also element
+                                result.push('\n');
+                                result.push_str(&indent);
+                                if Self::is_self_closing(prev_child) {
+                                    result.push_str("/>");
+                                } else {
+                                    result.push('>');
+                                }
+                            }
+                            // If prev is inline, curr continues inline
+                        }
+
+                        result.push_str(&child.to_xml_internal(depth, false, compact_mode));
+                    }
+
+                    return result;
                 }
 
                 let indent = "   ".repeat(depth);
