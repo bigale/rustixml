@@ -1829,8 +1829,14 @@ fn register_repetition_actions(
                 forest.action(&format!("{} -> ", star_name), |_nodes| {
                     XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: vec![] }
                 });
-                forest.action(&format!("{} -> {}", star_name, plus_name), |nodes| {
-                    XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
+                forest.action(&format!("{} -> {}", star_name, plus_name), |mut nodes| {
+                    // nodes contains exactly one element: the _repeat_container from plus
+                    // Pass it through directly instead of re-wrapping
+                    if nodes.len() == 1 {
+                        nodes.pop().unwrap()
+                    } else {
+                        XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
+                    }
                 });
             }
 
