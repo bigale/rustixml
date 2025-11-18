@@ -291,14 +291,27 @@ impl Lexer {
     fn read_char_class(&mut self) -> Result<Token, String> {
         self.advance(); // skip opening bracket
         let mut content = String::new();
+        let mut in_quotes = false;
+        let mut quote_char = '\0';
 
         while let Some(ch) = self.peek() {
-            if ch == ']' {
+            if ch == ']' && !in_quotes {
                 self.advance(); // skip closing bracket
                 return Ok(Token::CharClass(content));
             }
-            if ch == '{' {
-                // Skip comment inside character class
+
+            // Track quotes
+            if (ch == '"' || ch == '\'') && !in_quotes {
+                in_quotes = true;
+                quote_char = ch;
+                content.push(ch);
+                self.advance();
+            } else if in_quotes && ch == quote_char {
+                in_quotes = false;
+                content.push(ch);
+                self.advance();
+            } else if ch == '{' && !in_quotes {
+                // Only skip comments when not inside quotes
                 self.skip_comment()?;
             } else {
                 content.push(ch);

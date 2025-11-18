@@ -44,6 +44,7 @@ pub enum BaseFactor {
     CharClass {
         content: String,
         negated: bool,  // true if ~[...]
+        mark: Mark,     // mark for the charclass (@, -, ^)
     },
     Group {
         alternatives: Box<Alternatives>,
@@ -132,11 +133,15 @@ impl BaseFactor {
     }
 
     pub fn charclass(content: String) -> Self {
-        BaseFactor::CharClass { content, negated: false }
+        BaseFactor::CharClass { content, negated: false, mark: Mark::None }
     }
 
     pub fn negated_charclass(content: String) -> Self {
-        BaseFactor::CharClass { content, negated: true }
+        BaseFactor::CharClass { content, negated: true, mark: Mark::None }
+    }
+
+    pub fn marked_charclass(content: String, negated: bool, mark: Mark) -> Self {
+        BaseFactor::CharClass { content, negated, mark }
     }
 
     pub fn group(alternatives: Alternatives) -> Self {

@@ -176,6 +176,42 @@ lr1! {
             Token::CharClass(content) => BaseFactor::negated_charclass(content),
             _ => unreachable!(),
         }
+    }
+    | at tok=charclass {
+        match tok {
+            Token::CharClass(content) => BaseFactor::marked_charclass(content, false, Mark::Attribute),
+            _ => unreachable!(),
+        }
+    }
+    | minus tok=charclass {
+        match tok {
+            Token::CharClass(content) => BaseFactor::marked_charclass(content, false, Mark::Hidden),
+            _ => unreachable!(),
+        }
+    }
+    | caret tok=charclass {
+        match tok {
+            Token::CharClass(content) => BaseFactor::marked_charclass(content, false, Mark::Promoted),
+            _ => unreachable!(),
+        }
+    }
+    | at tilde tok=charclass {
+        match tok {
+            Token::CharClass(content) => BaseFactor::marked_charclass(content, true, Mark::Attribute),
+            _ => unreachable!(),
+        }
+    }
+    | minus tilde tok=charclass {
+        match tok {
+            Token::CharClass(content) => BaseFactor::marked_charclass(content, true, Mark::Hidden),
+            _ => unreachable!(),
+        }
+    }
+    | caret tilde tok=charclass {
+        match tok {
+            Token::CharClass(content) => BaseFactor::marked_charclass(content, true, Mark::Promoted),
+            _ => unreachable!(),
+        }
     };
 
     // Factor with optional repetition operator

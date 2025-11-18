@@ -13,7 +13,36 @@ static GROUP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// Helper function to normalize character class content by removing quote characters
 /// Supports both single quotes (') and double quotes (") per iXML spec flexibility
 fn normalize_charclass_content(content: &str) -> String {
-    content.replace("-", "_").replace("'", "").replace("\"", "").replace(" ", "")
+    // Escape all special characters to create unique, safe symbol names
+    content.chars().map(|ch| {
+        match ch {
+            ' ' => "SPACE".to_string(),
+            '\t' => "TAB".to_string(),
+            '\n' => "NEWLINE".to_string(),
+            '\r' => "RETURN".to_string(),
+            '"' => "QUOTE".to_string(),
+            '\'' => "APOS".to_string(),
+            '<' => "LT".to_string(),
+            '>' => "GT".to_string(),
+            '&' => "AMP".to_string(),
+            '/' => "SLASH".to_string(),
+            '\\' => "BACKSLASH".to_string(),
+            '|' => "PIPE".to_string(),
+            '?' => "QUEST".to_string(),
+            '!' => "EXCL".to_string(),
+            '=' => "EQ".to_string(),
+            '-' => "DASH".to_string(),
+            '[' => "LBRACK".to_string(),
+            ']' => "RBRACK".to_string(),
+            '{' => "LBRACE".to_string(),
+            '}' => "RBRACE".to_string(),
+            '(' => "LPAREN".to_string(),
+            ')' => "RPAREN".to_string(),
+            '#' => "HASH".to_string(),
+            _ if ch.is_alphanumeric() => ch.to_string(),
+            _ => format!("U{:04X}", ch as u32),
+        }
+    }).collect::<Vec<_>>().join("_")
 }
 
 /// Helper function to normalize separator symbols into a unique identifier
@@ -29,6 +58,32 @@ fn normalize_separator(symbols: &[String]) -> String {
         .collect()
 }
 
+/// Helper function to normalize multi-character literals into safe symbol names
+/// Escapes all special characters to prevent "Missing Symbol" errors
+fn normalize_literal_sequence(value: &str) -> String {
+    value.chars().map(|ch| {
+        match ch {
+            ' ' => "SPACE".to_string(),
+            '\t' => "TAB".to_string(),
+            '\n' => "NEWLINE".to_string(),
+            '\r' => "RETURN".to_string(),
+            '"' => "QUOTE".to_string(),
+            '\'' => "APOS".to_string(),
+            '<' => "LT".to_string(),
+            '>' => "GT".to_string(),
+            '&' => "AMP".to_string(),
+            '/' => "SLASH".to_string(),
+            '\\' => "BACKSLASH".to_string(),
+            '|' => "PIPE".to_string(),
+            '?' => "QUEST".to_string(),
+            '!' => "EXCL".to_string(),
+            '=' => "EQ".to_string(),
+            _ if ch.is_alphanumeric() => ch.to_string(),
+            _ => format!("U{:04X}", ch as u32),
+        }
+    }).collect::<Vec<_>>().join("_")
+}
+
 /// Helper function to normalize a separator sequence into a unique identifier
 /// This allows computing separator-based names without first converting to symbols
 fn normalize_sequence(seq: &Sequence) -> String {
@@ -39,7 +94,7 @@ fn normalize_sequence(seq: &Sequence) -> String {
                 .collect::<Vec<_>>()
                 .join(""),
             BaseFactor::Nonterminal { name, .. } => name.clone(),
-            BaseFactor::CharClass { content, negated } => {
+            BaseFactor::CharClass { content, negated, mark: _ } => {
                 let prefix = if *negated { "NEG" } else { "CC" };
                 format!("{}{}", prefix, normalize_charclass_content(content))
             }
@@ -83,6 +138,10 @@ pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> 
         builder = builder.terminal(&class_name, predicate);
     }
 
+    // Declare sequence nonterminals for multi-character literals BEFORE creating marked literal wrappers
+    // This ensures the base literal sequences exist when marked wrappers reference them
+    declare_literal_sequences(grammar, &mut builder);
+
     // Collect and pre-create marked literal wrapper rules
     let mut marked_literals = std::collections::HashSet::new();
     collect_marked_literals(grammar, &mut marked_literals);
@@ -98,9 +157,6 @@ pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> 
         builder = builder.nonterm(&rule.name);
     }
 
-    // Declare sequence nonterminals for multi-character literals
-    declare_literal_sequences(grammar, &mut builder);
-
     // Declare repetition helper nonterminals (e.g., letter_star, word_plus, etc.)
     let mut repetition_nonterminals = std::collections::HashSet::new();
     collect_repetition_nonterminals(grammar, &mut repetition_nonterminals);
@@ -109,8 +165,9 @@ pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> 
     }
 
     // Third pass: add all the rules
+    let mut created_repetitions = std::collections::HashSet::new();
     for rule in &grammar.rules {
-        builder = convert_rule(builder, rule)?;
+        builder = convert_rule(builder, rule, &mut created_repetitions)?;
     }
 
     Ok(builder)
@@ -173,7 +230,7 @@ fn collect_charclasses_from_alternatives(alts: &Alternatives, charclasses: &mut 
 
 fn collect_charclasses_from_factor(factor: &Factor, charclasses: &mut std::collections::HashSet<(String, bool)>) {
     match &factor.base {
-        BaseFactor::CharClass { content, negated } => {
+        BaseFactor::CharClass { content, negated, .. } => {
             charclasses.insert((content.clone(), *negated));
         }
         BaseFactor::Group { alternatives } => {
@@ -218,7 +275,18 @@ fn collect_marked_from_factor(factor: &Factor, marked_literals: &mut std::collec
                     let ch = value.chars().next().unwrap();
                     char_terminal_name(ch)
                 } else {
-                    format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+                    format!("lit_seq_{}", normalize_literal_sequence(value))
+                };
+                marked_literals.insert((base_name, *mark));
+            }
+        }
+        BaseFactor::CharClass { content, negated, mark, .. } => {
+            if *mark != Mark::None {
+                // Compute the base name (same logic as convert_factor)
+                let base_name = if *negated {
+                    format!("charclass_neg_{}", normalize_charclass_content(content))
+                } else {
+                    format!("charclass_{}", normalize_charclass_content(content))
                 };
                 marked_literals.insert((base_name, *mark));
             }
@@ -226,7 +294,7 @@ fn collect_marked_from_factor(factor: &Factor, marked_literals: &mut std::collec
         BaseFactor::Group { alternatives } => {
             collect_marked_from_alternatives(alternatives, marked_literals);
         }
-        _ => {}, // Nonterminal and CharClass don't have marks
+        _ => {}, // Only Nonterminals don't have marks
     }
 
     // Also collect from separator sequences in repetition operators
@@ -262,21 +330,35 @@ fn collect_nonterminals_from_sequence(nonterminals: &mut std::collections::HashS
 fn collect_repetition_from_factor(factor: &Factor, nonterminals: &mut std::collections::HashSet<String>) {
     // Get the base name for this factor
     let base_name = match &factor.base {
-        BaseFactor::Literal { value, .. } => {
+        BaseFactor::Literal { value, mark, .. } => {
             // Literals become terminals (single char) or sequences (multi-char)
-            if value.len() == 1 {
+            let base = if value.len() == 1 {
                 char_terminal_name(value.chars().next().unwrap())
             } else {
-                format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+                format!("lit_seq_{}", normalize_literal_sequence(value))
+            };
+
+            // If marked, the actual base name includes the mark suffix (wrapper rule)
+            if *mark != Mark::None {
+                format!("{}_{}", base, mark_suffix(*mark))
+            } else {
+                base
             }
         }
         BaseFactor::Nonterminal { name, .. } => name.clone(),
-        BaseFactor::CharClass { content, negated } => {
+        BaseFactor::CharClass { content, negated, mark, .. } => {
             // Character classes become terminals, use the same naming convention
-            if *negated {
+            let base = if *negated {
                 format!("charclass_neg_{}", normalize_charclass_content(content))
             } else {
                 format!("charclass_{}", normalize_charclass_content(content))
+            };
+
+            // If marked, the actual base name includes the mark suffix (wrapper rule)
+            if *mark != Mark::None {
+                format!("{}_{}", base, mark_suffix(*mark))
+            } else {
+                base
             }
         }
         BaseFactor::Group { alternatives } => {
@@ -336,7 +418,7 @@ fn declare_sequences_from_factor(factor: &Factor, builder: &mut GrammarBuilder, 
     match &factor.base {
         BaseFactor::Literal { value, .. } => {
             if value.len() > 1 {
-                let seq_name = format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"));
+                let seq_name = format!("lit_seq_{}", normalize_literal_sequence(value));
                 if !declared.contains(&seq_name) {
                     let old_builder = std::mem::replace(builder, GrammarBuilder::default());
                     *builder = old_builder.nonterm(&seq_name);
@@ -353,17 +435,17 @@ fn declare_sequences_from_factor(factor: &Factor, builder: &mut GrammarBuilder, 
 }
 
 /// Convert a single iXML rule to Earlgrey format
-fn convert_rule(builder: GrammarBuilder, rule: &Rule) -> Result<GrammarBuilder, String> {
+fn convert_rule(builder: GrammarBuilder, rule: &Rule, created_reps: &mut std::collections::HashSet<String>) -> Result<GrammarBuilder, String> {
     // For now, we'll ignore marks on the rule itself
     // We'll handle them later when generating XML
 
-    convert_alternatives(builder, &rule.name, &rule.alternatives)
+    convert_alternatives(builder, &rule.name, &rule.alternatives, created_reps)
 }
 
 /// Convert alternatives (multiple options separated by |)
-fn convert_alternatives(mut builder: GrammarBuilder, rule_name: &str, alts: &Alternatives) -> Result<GrammarBuilder, String> {
+fn convert_alternatives(mut builder: GrammarBuilder, rule_name: &str, alts: &Alternatives, created_reps: &mut std::collections::HashSet<String>) -> Result<GrammarBuilder, String> {
     for seq in &alts.alts {
-        builder = convert_sequence(builder, rule_name, seq)?;
+        builder = convert_sequence(builder, rule_name, seq, created_reps)?;
     }
     Ok(builder)
 }
@@ -558,12 +640,12 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
 }
 
 /// Convert a sequence (multiple factors in a row)
-fn convert_sequence(mut builder: GrammarBuilder, rule_name: &str, seq: &Sequence) -> Result<GrammarBuilder, String> {
+fn convert_sequence(mut builder: GrammarBuilder, rule_name: &str, seq: &Sequence, created_reps: &mut std::collections::HashSet<String>) -> Result<GrammarBuilder, String> {
     // Build a list of symbols (terminals and nonterminals) for this production
     let mut symbols = Vec::new();
 
     for factor in &seq.factors {
-        let (new_builder, symbol_name) = convert_factor(builder, factor)?;
+        let (new_builder, symbol_name) = convert_factor(builder, factor, created_reps)?;
         builder = new_builder;
         symbols.push(symbol_name);
     }
@@ -586,11 +668,11 @@ fn mark_suffix(mark: Mark) -> &'static str {
 }
 
 /// Convert a sequence to a list of symbol names (for use in separated repetition)
-fn convert_sequence_to_symbols(mut builder: GrammarBuilder, seq: &Sequence) -> Result<(GrammarBuilder, Vec<String>), String> {
+fn convert_sequence_to_symbols(mut builder: GrammarBuilder, seq: &Sequence, created_reps: &mut std::collections::HashSet<String>) -> Result<(GrammarBuilder, Vec<String>), String> {
     let mut symbols = Vec::new();
 
     for factor in &seq.factors {
-        let (new_builder, symbol_name) = convert_factor(builder, factor)?;
+        let (new_builder, symbol_name) = convert_factor(builder, factor, created_reps)?;
         builder = new_builder;
         symbols.push(symbol_name);
     }
@@ -598,7 +680,7 @@ fn convert_sequence_to_symbols(mut builder: GrammarBuilder, seq: &Sequence) -> R
     Ok((builder, symbols))
 }
 
-fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(GrammarBuilder, String), String> {
+fn convert_factor(mut builder: GrammarBuilder, factor: &Factor, created_reps: &mut std::collections::HashSet<String>) -> Result<(GrammarBuilder, String), String> {
     // First get the base symbol name
     let (new_builder, base_name) = match &factor.base {
         BaseFactor::Literal { value, insertion: _, mark } => {
@@ -609,15 +691,20 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
                 char_terminal_name(ch)
             } else {
                 // Multi-character literal - create a sequence rule
-                let seq_name = format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"));
+                let seq_name = format!("lit_seq_{}", normalize_literal_sequence(value));
 
-                // Collect character terminal names
-                let char_symbols: Vec<String> = value.chars()
-                    .map(|ch| char_terminal_name(ch))
-                    .collect();
+                // Only create the rule if it hasn't been created yet
+                if !created_reps.contains(&seq_name) {
+                    created_reps.insert(seq_name.clone());
 
-                // Create a rule: seq_name := char1 char2 char3 ...
-                builder = builder.rule(&seq_name, &char_symbols.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+                    // Collect character terminal names
+                    let char_symbols: Vec<String> = value.chars()
+                        .map(|ch| char_terminal_name(ch))
+                        .collect();
+
+                    // Create a rule: seq_name := char1 char2 char3 ...
+                    builder = builder.rule(&seq_name, &char_symbols.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+                }
                 seq_name
             };
 
@@ -636,14 +723,21 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
             // TODO: Track mark for XML generation
             (builder, name.clone())
         }
-        BaseFactor::CharClass { content, negated } => {
+        BaseFactor::CharClass { content, negated, mark } => {
             // Terminal was already defined in first pass, just return the name
-            let class_name = if *negated {
+            let base = if *negated {
                 format!("charclass_neg_{}", normalize_charclass_content(content))
             } else {
                 format!("charclass_{}", normalize_charclass_content(content))
             };
-            (builder, class_name)
+
+            // If the character class has a mark, use the pre-created wrapper nonterminal
+            if *mark != Mark::None {
+                let marked_name = format!("{}_{}", base, mark_suffix(*mark));
+                (builder, marked_name)
+            } else {
+                (builder, base)
+            }
         }
         BaseFactor::Group { alternatives } => {
             // Generate a unique name for this group
@@ -658,7 +752,7 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
                 // Build symbols list for this alternative
                 let mut symbols = Vec::new();
                 for inner_factor in &seq.factors {
-                    let (new_builder, symbol_name) = convert_factor(b, inner_factor)?;
+                    let (new_builder, symbol_name) = convert_factor(b, inner_factor, created_reps)?;
                     b = new_builder;
                     symbols.push(symbol_name);
                 }
@@ -678,37 +772,55 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
         Repetition::OneOrMore => {
             // Create a new rule: base_name_plus := base_name | base_name_plus base_name
             let plus_name = format!("{}_plus", base_name);
-            // Groups need dynamic declaration (can't predict group_N names upfront)
-            if base_name.starts_with("group_") {
-                builder = builder.nonterm(&plus_name);
+
+            // Check if we've already created this repetition rule
+            if !created_reps.contains(&plus_name) {
+                created_reps.insert(plus_name.clone());
+
+                // Groups need dynamic declaration (can't predict group_N names upfront)
+                if base_name.starts_with("group_") {
+                    builder = builder.nonterm(&plus_name);
+                }
+                // Other nonterminals already declared in upfront pass
+                builder = builder.rule(&plus_name, &[&base_name]);
+                builder = builder.rule(&plus_name, &[&plus_name, &base_name]);
             }
-            // Other nonterminals already declared in upfront pass
-            builder = builder.rule(&plus_name, &[&base_name]);
-            builder = builder.rule(&plus_name, &[&plus_name, &base_name]);
             Ok((builder, plus_name))
         }
         Repetition::ZeroOrMore => {
             // Create a new rule: base_name_star := ε | base_name_star base_name (LEFT recursion like +)
             let star_name = format!("{}_star", base_name);
-            // Groups need dynamic declaration (can't predict group_N names upfront)
-            if base_name.starts_with("group_") {
-                builder = builder.nonterm(&star_name);
+
+            // Check if we've already created this repetition rule
+            if !created_reps.contains(&star_name) {
+                created_reps.insert(star_name.clone());
+
+                // Groups need dynamic declaration (can't predict group_N names upfront)
+                if base_name.starts_with("group_") {
+                    builder = builder.nonterm(&star_name);
+                }
+                // Other nonterminals already declared in upfront pass
+                builder = builder.rule(&star_name, &[] as &[&str]); // epsilon production
+                builder = builder.rule(&star_name, &[&star_name, &base_name]); // LEFT recursion
             }
-            // Other nonterminals already declared in upfront pass
-            builder = builder.rule(&star_name, &[] as &[&str]); // epsilon production
-            builder = builder.rule(&star_name, &[&star_name, &base_name]); // LEFT recursion
             Ok((builder, star_name))
         }
         Repetition::Optional => {
             // Create a new rule: base_name_opt := ε | base_name
             let opt_name = format!("{}_opt", base_name);
-            // Groups need dynamic declaration (can't predict group_N names upfront)
-            if base_name.starts_with("group_") {
-                builder = builder.nonterm(&opt_name);
+
+            // Check if we've already created this optional rule
+            if !created_reps.contains(&opt_name) {
+                created_reps.insert(opt_name.clone());
+
+                // Groups need dynamic declaration (can't predict group_N names upfront)
+                if base_name.starts_with("group_") {
+                    builder = builder.nonterm(&opt_name);
+                }
+                // Other nonterminals already declared in upfront pass
+                builder = builder.rule(&opt_name, &[] as &[&str]); // epsilon production
+                builder = builder.rule(&opt_name, &[&base_name]);
             }
-            // Other nonterminals already declared in upfront pass
-            builder = builder.rule(&opt_name, &[] as &[&str]); // epsilon production
-            builder = builder.rule(&opt_name, &[&base_name]);
             Ok((builder, opt_name))
         }
         Repetition::SeparatedZeroOrMore(sep) => {
@@ -718,26 +830,32 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
             let star_name = format!("{}_sep_{}_star", base_name, sep_id);
             let plus_name = format!("{}_sep_{}_plus", base_name, sep_id);
 
-            // Convert separator sequence to runtime symbols
-            let (new_builder, sep_symbols) = convert_sequence_to_symbols(builder, sep)?;
-            builder = new_builder;
+            // Check if we've already created this repetition rule
+            if !created_reps.contains(&star_name) {
+                created_reps.insert(star_name.clone());
+                created_reps.insert(plus_name.clone());
 
-            if base_name.starts_with("group_") {
-                builder = builder.nonterm(&star_name);
-                builder = builder.nonterm(&plus_name);
+                // Convert separator sequence to runtime symbols
+                let (new_builder, sep_symbols) = convert_sequence_to_symbols(builder, sep, created_reps)?;
+                builder = new_builder;
+
+                if base_name.starts_with("group_") {
+                    builder = builder.nonterm(&star_name);
+                    builder = builder.nonterm(&plus_name);
+                }
+
+                // base_sep_star := ε | base_sep_plus
+                builder = builder.rule(&star_name, &[] as &[&str]);
+                builder = builder.rule(&star_name, &[&plus_name]);
+
+                // base_sep_plus := base | base_sep_plus sep base
+                builder = builder.rule(&plus_name, &[&base_name]);
+                let mut plus_rule = vec![plus_name.clone()];
+                plus_rule.extend(sep_symbols.iter().map(|s| s.clone()));
+                plus_rule.push(base_name.clone());
+                let rule_refs: Vec<&str> = plus_rule.iter().map(|s| s.as_str()).collect();
+                builder = builder.rule(&plus_name, &rule_refs);
             }
-
-            // base_sep_star := ε | base_sep_plus
-            builder = builder.rule(&star_name, &[] as &[&str]);
-            builder = builder.rule(&star_name, &[&plus_name]);
-
-            // base_sep_plus := base | base_sep_plus sep base
-            builder = builder.rule(&plus_name, &[&base_name]);
-            let mut plus_rule = vec![plus_name.clone()];
-            plus_rule.extend(sep_symbols.iter().map(|s| s.clone()));
-            plus_rule.push(base_name.clone());
-            let rule_refs: Vec<&str> = plus_rule.iter().map(|s| s.as_str()).collect();
-            builder = builder.rule(&plus_name, &rule_refs);
 
             Ok((builder, star_name))
         }
@@ -747,21 +865,26 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor) -> Result<(Gramm
             let sep_id = normalize_sequence(sep);
             let plus_name = format!("{}_sep_{}_plus", base_name, sep_id);
 
-            // Convert separator sequence to runtime symbols
-            let (new_builder, sep_symbols) = convert_sequence_to_symbols(builder, sep)?;
-            builder = new_builder;
+            // Check if we've already created this repetition rule
+            if !created_reps.contains(&plus_name) {
+                created_reps.insert(plus_name.clone());
 
-            if base_name.starts_with("group_") {
-                builder = builder.nonterm(&plus_name);
+                // Convert separator sequence to runtime symbols
+                let (new_builder, sep_symbols) = convert_sequence_to_symbols(builder, sep, created_reps)?;
+                builder = new_builder;
+
+                if base_name.starts_with("group_") {
+                    builder = builder.nonterm(&plus_name);
+                }
+
+                // base_sep_plus := base | base_sep_plus sep base
+                builder = builder.rule(&plus_name, &[&base_name]);
+                let mut plus_rule = vec![plus_name.clone()];
+                plus_rule.extend(sep_symbols.iter().map(|s| s.clone()));
+                plus_rule.push(base_name.clone());
+                let rule_refs: Vec<&str> = plus_rule.iter().map(|s| s.as_str()).collect();
+                builder = builder.rule(&plus_name, &rule_refs);
             }
-
-            // base_sep_plus := base | base_sep_plus sep base
-            builder = builder.rule(&plus_name, &[&base_name]);
-            let mut plus_rule = vec![plus_name.clone()];
-            plus_rule.extend(sep_symbols.iter().map(|s| s.clone()));
-            plus_rule.push(base_name.clone());
-            let rule_refs: Vec<&str> = plus_rule.iter().map(|s| s.as_str()).collect();
-            builder = builder.rule(&plus_name, &rule_refs);
 
             Ok((builder, plus_name))
         }
@@ -1051,7 +1174,7 @@ fn register_rule_actions(
 
         // Create the production string: "rule_name -> symbol1 symbol2 ..."
         let production = if symbols.is_empty() {
-            rule_name.to_string()
+            format!("{} -> ", rule_name)  // Empty production (epsilon)
         } else {
             format!("{} -> {}", rule_name, symbols.join(" "))
         };
@@ -1222,7 +1345,7 @@ fn register_literal_sequence_actions(forest: &mut EarleyForest<'static, XmlNode>
     // Register actions for each multi-character literal sequence
     for literal in literals_seen {
         if literal.len() > 1 {
-            let seq_name = format!("lit_seq_{}", literal.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"));
+            let seq_name = format!("lit_seq_{}", normalize_literal_sequence(&literal));
 
             // Build the character symbol list
             let char_symbols: Vec<String> = literal.chars()
@@ -1296,14 +1419,21 @@ fn register_group_actions_from_alternatives(
 
                     // Create production string
                     let production = if symbols.is_empty() {
-                        group_name.clone()
+                        format!("{} -> ", group_name)  // Trailing space for epsilon production
                     } else {
                         format!("{} -> {}", group_name, symbols.join(" "))
                     };
 
                     // Action: groups just pass through their child nodes
                     forest.action(&production, |nodes: Vec<XmlNode>| {
-                        if nodes.len() == 1 {
+                        if nodes.is_empty() {
+                            // Empty group - return hidden element (will be filtered out)
+                            XmlNode::Element {
+                                name: "_hidden".to_string(),
+                                attributes: vec![],
+                                children: vec![],
+                            }
+                        } else if nodes.len() == 1 {
                             nodes.into_iter().next().unwrap()
                         } else {
                             // Multiple nodes - wrap in an element
@@ -1335,7 +1465,7 @@ fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> 
                     let ch = value.chars().next().unwrap();
                     char_terminal_name(ch)
                 } else {
-                    format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+                    format!("lit_seq_{}", normalize_literal_sequence(value))
                 };
 
                 // If marked, use the marked wrapper name
@@ -1346,7 +1476,7 @@ fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> 
                 }
             }
             BaseFactor::Nonterminal { name, .. } => name.clone(),
-            BaseFactor::CharClass { content, negated } => {
+            BaseFactor::CharClass { content, negated, .. } => {
                 if *negated {
                     format!("charclass_neg_{}", normalize_charclass_content(content))
                 } else {
@@ -1404,7 +1534,63 @@ fn register_marked_literal_from_alternatives(
                         let ch = value.chars().next().unwrap();
                         char_terminal_name(ch)
                     } else {
-                        format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+                        format!("lit_seq_{}", normalize_literal_sequence(value))
+                    };
+
+                    let marked_name = format!("{}_{}", base, mark_suffix(*mark));
+                    let production = format!("{} -> {}", marked_name, base);
+
+                    // Register action based on mark type
+                    match mark {
+                        Mark::Hidden => {
+                            // Hidden: don't include in output
+                            forest.action(&production, |_nodes| {
+                                // Return an empty element that will be unwrapped by parent
+                                XmlNode::Element {
+                                    name: "_hidden".to_string(),
+                                    attributes: vec![],
+                                    children: vec![],
+                                }
+                            });
+                        }
+                        Mark::Attribute => {
+                            // Attribute: extract text and create attribute node
+                            let name_clone = marked_name.clone();
+                            forest.action(&production, move |nodes| {
+                                let text = extract_text_from_nodes(&nodes);
+                                XmlNode::Attribute {
+                                    name: name_clone.clone(),
+                                    value: text,
+                                }
+                            });
+                        }
+                        Mark::Promoted => {
+                            // Promoted: pass through without wrapper
+                            forest.action(&production, |mut nodes| {
+                                if nodes.len() == 1 {
+                                    nodes.pop().unwrap()
+                                } else {
+                                    XmlNode::Element {
+                                        name: "_promoted".to_string(),
+                                        attributes: vec![],
+                                        children: nodes,
+                                    }
+                                }
+                            });
+                        }
+                        Mark::None => {}
+                    }
+                }
+            }
+
+            // Check if this factor is a marked character class
+            if let BaseFactor::CharClass { content, negated, mark } = &factor.base {
+                if *mark != Mark::None {
+                    // Get the base symbol name
+                    let base = if *negated {
+                        format!("charclass_neg_{}", normalize_charclass_content(content))
+                    } else {
+                        format!("charclass_{}", normalize_charclass_content(content))
                     };
 
                     let marked_name = format!("{}_{}", base, mark_suffix(*mark));
@@ -1470,7 +1656,7 @@ fn get_factor_symbol(factor: &Factor) -> (String, String) {
                 char_terminal_name(ch)
             } else {
                 // Multi-character literal - use sequence name
-                format!("lit_seq_{}", value.replace(" ", "_SPACE_").replace("\"", "_QUOTE_"))
+                format!("lit_seq_{}", normalize_literal_sequence(value))
             };
 
             // If marked, use the marked wrapper name
@@ -1481,12 +1667,19 @@ fn get_factor_symbol(factor: &Factor) -> (String, String) {
             }
         }
         BaseFactor::Nonterminal { name, mark: _ } => name.clone(),
-        BaseFactor::CharClass { content, negated } => {
+        BaseFactor::CharClass { content, negated, mark } => {
             // Use the same naming as in convert_factor
-            if *negated {
+            let base = if *negated {
                 format!("charclass_neg_{}", normalize_charclass_content(content))
             } else {
                 format!("charclass_{}", normalize_charclass_content(content))
+            };
+
+            // If marked, use the marked wrapper name (same as Literal handling)
+            if *mark != Mark::None {
+                format!("{}_{}", base, mark_suffix(*mark))
+            } else {
+                base
             }
         }
         BaseFactor::Group { .. } => {

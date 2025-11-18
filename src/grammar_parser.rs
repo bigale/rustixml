@@ -125,8 +125,17 @@ impl Parser {
         Ok(Alternatives::new(alts))
     }
 
-    // Sequence: Factor ("," Factor)* | Factor+
+    // Sequence: Factor ("," Factor)* | Factor+ | ε (empty)
     fn parse_sequence(&mut self) -> Result<Sequence, String> {
+        // Handle empty sequences (e.g., "c: ." or "statement: ...; .")
+        if self.matches(&Token::Period)
+            || self.matches(&Token::Pipe)
+            || self.matches(&Token::Semicolon)
+            || self.matches(&Token::RParen)
+        {
+            return Ok(Sequence::new(vec![]));
+        }
+
         let mut factors = vec![self.parse_factor()?];
 
         // Check if comma-separated or whitespace-separated
@@ -162,29 +171,37 @@ impl Parser {
             Some(Repetition::Optional)
         } else if self.matches(&Token::DoubleStar) {
             self.consume();
-            // Expect separator in parentheses: **(sep)
-            if !self.matches(&Token::LParen) {
-                return Err("Expected '(' after '**'".to_string());
-            }
-            self.consume();
-            let sep = self.parse_sequence()?;
-            if !self.matches(&Token::RParen) {
-                return Err("Expected ')' after separator".to_string());
-            }
-            self.consume();
+            // Separator can be: **(sep) or **sep
+            let sep = if self.matches(&Token::LParen) {
+                self.consume();
+                let s = self.parse_sequence()?;
+                if !self.matches(&Token::RParen) {
+                    return Err("Expected ')' after separator".to_string());
+                }
+                self.consume();
+                s
+            } else {
+                // Parse a single factor and wrap in a sequence
+                let factor = self.parse_base_factor()?;
+                Sequence::new(vec![Factor::simple(factor)])
+            };
             Some(Repetition::SeparatedZeroOrMore(Box::new(sep)))
         } else if self.matches(&Token::DoublePlus) {
             self.consume();
-            // Expect separator in parentheses: ++(sep)
-            if !self.matches(&Token::LParen) {
-                return Err("Expected '(' after '++'".to_string());
-            }
-            self.consume();
-            let sep = self.parse_sequence()?;
-            if !self.matches(&Token::RParen) {
-                return Err("Expected ')' after separator".to_string());
-            }
-            self.consume();
+            // Separator can be: ++(sep) or ++sep
+            let sep = if self.matches(&Token::LParen) {
+                self.consume();
+                let s = self.parse_sequence()?;
+                if !self.matches(&Token::RParen) {
+                    return Err("Expected ')' after separator".to_string());
+                }
+                self.consume();
+                s
+            } else {
+                // Parse a single factor and wrap in a sequence
+                let factor = self.parse_base_factor()?;
+                Sequence::new(vec![Factor::simple(factor)])
+            };
             Some(Repetition::SeparatedOneOrMore(Box::new(sep)))
         } else if self.matches(&Token::Star) {
             self.consume();
@@ -218,7 +235,7 @@ impl Parser {
                 Mark::Promoted
             };
 
-            // After mark, expect string, hexchar, or identifier
+            // After mark, expect string, hexchar, charclass, or identifier
             match self.peek() {
                 Some(Token::String(s)) => {
                     let s = s.clone();
@@ -231,12 +248,17 @@ impl Parser {
                     let ch = Self::hex_to_char(&hex_str)?;
                     Ok(BaseFactor::marked_literal(ch.to_string(), mark))
                 }
+                Some(Token::CharClass(s)) => {
+                    let s = s.clone();
+                    self.consume();
+                    Ok(BaseFactor::marked_charclass(s, false, mark))
+                }
                 Some(Token::Ident(s)) => {
                     let s = s.clone();
                     self.consume();
                     Ok(BaseFactor::marked_nonterminal(s, mark))
                 }
-                other => Err(format!("Expected string, hex char, or identifier after mark, got {:?}", other)),
+                other => Err(format!("Expected string, hex char, character class, or identifier after mark, got {:?}", other)),
             }
         } else if self.matches(&Token::Plus) {
             // Insertion: +string
@@ -246,8 +268,12 @@ impl Parser {
                 other => Err(format!("Expected string after '+', got {:?}", other)),
             }
         } else if self.matches(&Token::Tilde) {
-            // Exclusion: ~factor (in iXML spec but not yet implemented)
-            Err("Exclusion operator (~) is not yet supported".to_string())
+            // Exclusion: ~[charclass]
+            self.consume();
+            match self.expect("character class after '~'")? {
+                Token::CharClass(s) => Ok(BaseFactor::negated_charclass(s)),
+                other => Err(format!("Expected character class after '~', got {:?}", other)),
+            }
         } else {
             // No mark prefix
             match self.peek() {

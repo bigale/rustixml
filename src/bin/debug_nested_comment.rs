@@ -2,19 +2,13 @@ use rustixml::testsuite_utils::{read_simple_test, run_test, TestOutcome};
 
 fn main() {
     let test_dir = "/home/bigale/repos/ixml/tests/correct";
-    let test_name = "email";
+    let test_name = "nested-comment";
 
     match read_simple_test(test_dir, test_name) {
         Ok(test) => {
             println!("Grammar:");
             println!("{}", test.grammar);
-            println!("\nInput:");
-            println!("{}", test.input);
-            if let Some(expected) = &test.expected_xml {
-                println!("\nExpected output:");
-                println!("{}", expected);
-            }
-            println!("\n--- Running test ---");
+            println!("\n---\n");
 
             match run_test(&test) {
                 TestOutcome::Fail { expected, actual } => {
@@ -22,11 +16,9 @@ fn main() {
                 }
                 TestOutcome::Pass => println!("PASS"),
                 TestOutcome::GrammarParseError(e) => {
-                    println!("Grammar error: {}", e);
+                    println!("Grammar parse error: {}", e);
                 }
-                TestOutcome::InputParseError(e) => {
-                    println!("Input error: {}", e);
-                }
+                TestOutcome::InputParseError(e) => println!("Input parse error: {}", e),
                 TestOutcome::Skip(r) => println!("Skip: {}", r),
             }
         }

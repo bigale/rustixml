@@ -15,15 +15,14 @@ rustixml is a Rust implementation of an iXML (Invisible XML) parser. iXML is a g
 
 **Test Suite**: `/home/bigale/repos/ixml/tests/correct/` (49 total tests)
 
-**Latest Results** (using handwritten recursive descent parser for grammar parsing):
-- **20 PASSING** (40.8%) ✅ ALL NON-TIMEOUT/ERROR TESTS PASSING!
-- **0 FAILING** (0%) ✅
-- **19 TIMEOUTS** (38.8%)
-- **2 INPUT_ERRORS** (4.1%)
-- **3 GRAMMAR_ERRORS** (6.1%)
+**Latest Results** (with marked CharClass semantic action fixes):
+- **22 PASSING** (44.9%)
+- **5 FAILING** (10.2%) - output mismatch
+- **13 TIMEOUTS** (26.5%)
+- **4 INPUT_ERRORS** (8.2%)
 - **5 SKIP** (10.2%) - missing files or not applicable
 
-### Passing Tests (20) ✅
+### Passing Tests (22)
 - `aaa` - Hidden marked literals
 - `arith` - Arithmetic expression with canonical XML formatting
 - `attribute-value` - XML entity escaping in attributes
@@ -33,7 +32,9 @@ rustixml is a Rust implementation of an iXML (Invisible XML) parser. iXML is a g
 - `hex`, `hex1`, `hex3` - Hexadecimal parsing
 - `lf` - Marked hex characters (hidden linefeed)
 - `marked` - Marked literals with attribute marks
+- `nested-comment` - Nested brace comments
 - `para-test` - Multi-paragraph parsing with character classes
+- `program` - Complex grammar structure
 - `range`, `range-comments` - Character ranges
 - `ranges` - Character range edge cases
 - `string` - String literals
@@ -43,22 +44,21 @@ rustixml is a Rust implementation of an iXML (Invisible XML) parser. iXML is a g
 
 ### Known Issues by Category
 
-#### 1. Failing Tests (0) ✅
-**All failing tests have been resolved!**
-
-The handwritten parser fixed all 4 previously failing tests (`marked`, `para-test`, `ranges`, `tab`), plus 1 previously input-error test (`empty-group`).
-
-#### 2. Grammar Parse Errors (3)
-- `nested-comment` - Nested brace comments
-- `program` - Complex grammar structure
+#### 1. Failing Tests (5) - Output mismatch
+- `json` - JSON parsing (output format issue)
 - `ranges1` - Range syntax variation
+- `vcard` - VCard parsing
+- `xml` - XML parsing
+- `xml1` - XML parsing variant
 
-#### 3. Input Parse Errors (2)
+#### 2. Input Parse Errors (4)
 - `email` - Character class matching issue
+- `unicode-classes` - Unicode class support
 - `unicode-range1` - Unicode range edge case
+- `xpath` - XPath parsing
 
-#### 4. Timeout Tests (19)
-**All timeout tests** (timeout after 2s): `address`, `diary`, `diary2`, `diary3`, `expr`, `expr1`, `expr2`, `expr3`, `expr4`, `expr5`, `expr6`, `json`, `poly`, `unicode-classes`, `vcard`, `xml`, `xml1`, `xpath`
+#### 3. Timeout Tests (13)
+**Timeout tests** (timeout after 2s): `address`, `diary`, `diary2`, `diary3`, `expr`, `expr1`, `expr2`, `expr3`, `expr4`, `expr5`, `expr6`, `json1`, `poly`
 
 These tests cause parser hangs, likely due to:
 - Left-recursion in grammar
@@ -335,19 +335,15 @@ cargo run --release --bin debug_testname
 
 ## Next Steps
 
-### High Priority ✅ COMPLETED!
-1. ~~**Fix failing tests**~~ ✅ **DONE!** All 4 failing tests now pass
-   - `marked`, `ranges` - Fixed by semantic XML comparison
-   - `lf`, `para-test` - Fixed by character class `|` operator support
-   - **Result: 19/19 non-timeout/error tests passing (100%)**
+### High Priority
+1. **Fix failing tests** (5 tests) - Debug output mismatch in `json`, `ranges1`, `vcard`, `xml`, `xml1`
+2. **Fix input parse errors** (4 tests) - Debug `email`, `unicode-classes`, `unicode-range1`, `xpath`
 
-### Current Priority
-2. **Fix grammar parse errors** (3 tests) - Investigate `nested-comment`, `program`, `ranges1`
-3. **Fix input parse errors** (3 tests) - Debug `email`, `empty-group`, `unicode-range1`
-4. **Reduce timeout tests** (19 tests) - Investigate left-recursion and performance issues
-   - High-value targets: `expr` series (11 tests), `diary` series (3 tests)
-   - Complex tests: `json`, `xml`, `xpath`, `vcard`, `poly`
-5. **Performance optimization** - Improve Earley parser performance on complex grammars
+### Medium Priority
+3. **Reduce timeout tests** (13 tests) - Investigate left-recursion and performance issues
+   - High-value targets: `expr` series (7 tests), `diary` series (3 tests)
+   - Complex tests: `json1`, `poly`
+4. **Performance optimization** - Improve Earley parser performance on complex grammars
 
 ### Low Priority
 6. **Better error messages** - Improve grammar and parse error reporting

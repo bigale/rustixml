@@ -2,7 +2,7 @@ use rustixml::testsuite_utils::{read_simple_test, run_test, TestOutcome};
 
 fn main() {
     let test_dir = "/home/bigale/repos/ixml/tests/correct";
-    let test_name = "email";
+    let test_name = "empty-group";
 
     match read_simple_test(test_dir, test_name) {
         Ok(test) => {
