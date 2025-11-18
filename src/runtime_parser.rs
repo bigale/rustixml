@@ -1775,13 +1775,8 @@ fn register_rule_actions(
                             // For regular elements: keep as-is
                             other => other,
                         };
-
-                        // Wrap in _promoted for inline rendering
-                        children.push(XmlNode::Element {
-                            name: "_promoted".to_string(),
-                            attributes: vec![],
-                            children: vec![promoted_element],
-                        });
+                        // Add directly to children - no wrapper needed
+                        children.push(promoted_element);
                     }
                     // Regular nodes - keep as is
                     (node, _) => {
