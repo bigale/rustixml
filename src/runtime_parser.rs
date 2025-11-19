@@ -1320,9 +1320,16 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
                 chars.push(ch);
             }
         }
-        // Unicode category
-        else if element.len() == 1 || element.len() == 2 {
+        // Unicode category (1-2 chars, e.g., "L", "Lu", "Nd")
+        else if element.len() <= 2 && element.chars().all(|c| c.is_ascii_alphabetic()) {
             unicode_categories.push(element.to_string());
+        }
+        // Unquoted sequence of characters - treat each as individual character
+        // e.g., "xyz" in [xyz] becomes individual chars x, y, z
+        else {
+            for ch in element.chars() {
+                chars.push(ch);
+            }
         }
     }
 
