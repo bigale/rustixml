@@ -112,7 +112,7 @@ impl NativeParser {
             Mark::None => {
                 // Wrap in element
                 // If the node is a _sequence wrapper, unwrap it and use its children
-                let children = match result.node {
+                let mut children = match result.node {
                     Some(XmlNode::Element { name, children, .. }) if name == "_sequence" => {
                         // Unwrap sequence and use its children directly
                         children
@@ -120,9 +120,30 @@ impl NativeParser {
                     Some(node) => vec![node],
                     None => vec![], // Empty element
                 };
+                
+                // Extract attributes from children
+                let (attributes, non_attrs): (Vec<_>, Vec<_>) = 
+                    children.into_iter().partition(|node| {
+                        matches!(node, XmlNode::Attribute { .. })
+                    });
+                
+                // Convert attribute nodes to (name, value) tuples
+                let attrs: Vec<(String, String)> = attributes
+                    .into_iter()
+                    .filter_map(|node| {
+                        if let XmlNode::Attribute { name, value } = node {
+                            Some((name, value))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                
+                children = non_attrs;
+                
                 result.node = Some(XmlNode::Element {
                     name: rule.name.clone(),
-                    attributes: vec![],
+                    attributes: attrs,
                     children,
                 });
             }
@@ -393,6 +414,52 @@ impl NativeParser {
         Ok(ParseResult::new(node, result.consumed))
     }
 
+    /// Merge consecutive Text nodes and return an appropriate node
+    fn merge_nodes(&self, mut children: Vec<XmlNode>) -> Option<XmlNode> {
+        if children.is_empty() {
+            return None;
+        }
+        
+        // Merge consecutive Text nodes
+        let mut merged = Vec::new();
+        let mut text_buffer = String::new();
+        
+        for node in children {
+            match node {
+                XmlNode::Text(s) => {
+                    text_buffer.push_str(&s);
+                }
+                other => {
+                    // Flush text buffer if not empty
+                    if !text_buffer.is_empty() {
+                        merged.push(XmlNode::Text(text_buffer.clone()));
+                        text_buffer.clear();
+                    }
+                    merged.push(other);
+                }
+            }
+        }
+        
+        // Flush remaining text
+        if !text_buffer.is_empty() {
+            merged.push(XmlNode::Text(text_buffer));
+        }
+        
+        // Return result
+        if merged.is_empty() {
+            None
+        } else if merged.len() == 1 {
+            Some(merged.into_iter().next().unwrap())
+        } else {
+            // Multiple non-text nodes - wrap in sequence
+            Some(XmlNode::Element {
+                name: "_sequence".to_string(),
+                attributes: vec![],
+                children: merged,
+            })
+        }
+    }
+
     /// Parse zero or more repetitions (*)
     fn parse_zero_or_more(
         &self,
@@ -435,21 +502,8 @@ impl NativeParser {
             }
         }
 
-        // Return collected nodes (or None if all suppressed)
-        let node = if children.is_empty() {
-            None
-        } else if children.len() == 1 {
-            Some(children.into_iter().next().unwrap())
-        } else {
-            // Multiple children - wrap in sequence
-            Some(XmlNode::Element {
-                name: "_sequence".to_string(),
-                attributes: vec![],
-                children,
-            })
-        };
-
-        Ok(ParseResult::new(node, total_consumed))
+        // Return collected nodes (merged if they're all text)
+        Ok(ParseResult::new(self.merge_nodes(children), total_consumed))
     }
 
     /// Parse one or more repetitions (+)
@@ -506,20 +560,8 @@ impl NativeParser {
             }
         }
 
-        // Return collected nodes
-        let node = if children.is_empty() {
-            None
-        } else if children.len() == 1 {
-            Some(children.into_iter().next().unwrap())
-        } else {
-            Some(XmlNode::Element {
-                name: "_sequence".to_string(),
-                attributes: vec![],
-                children,
-            })
-        };
-
-        Ok(ParseResult::new(node, total_consumed))
+        // Return collected nodes (merged if they're all text)
+        Ok(ParseResult::new(self.merge_nodes(children), total_consumed))
     }
 
     /// Parse optional (?)
@@ -614,20 +656,8 @@ impl NativeParser {
             }
         }
 
-        // Return collected nodes
-        let node = if children.is_empty() {
-            None
-        } else if children.len() == 1 {
-            Some(children.into_iter().next().unwrap())
-        } else {
-            Some(XmlNode::Element {
-                name: "_sequence".to_string(),
-                attributes: vec![],
-                children,
-            })
-        };
-
-        Ok(ParseResult::new(node, total_consumed))
+        // Return collected nodes (merged if they're all text)
+        Ok(ParseResult::new(self.merge_nodes(children), total_consumed))
     }
 
     /// Parse one or more with separator (++)
@@ -693,20 +723,8 @@ impl NativeParser {
             }
         }
 
-        // Return collected nodes
-        let node = if children.is_empty() {
-            None
-        } else if children.len() == 1 {
-            Some(children.into_iter().next().unwrap())
-        } else {
-            Some(XmlNode::Element {
-                name: "_sequence".to_string(),
-                attributes: vec![],
-                children,
-            })
-        };
-
-        Ok(ParseResult::new(node, total_consumed))
+        // Return collected nodes (merged if they're all text)
+        Ok(ParseResult::new(self.merge_nodes(children), total_consumed))
     }
 }
 
