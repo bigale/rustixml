@@ -211,16 +211,16 @@ impl NativeParser {
         factor: &Factor,
         ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
-        // TODO: Implement in Phase 4 (repetitions)
-        // For now, just parse the base factor
         match &factor.repetition {
             Repetition::None => self.parse_base_factor(stream, &factor.base, ctx),
-            _ => {
-                // Placeholder for repetitions
-                Err(ParseError::Custom {
-                    message: "Repetitions not yet implemented".to_string(),
-                    position: stream.position(),
-                })
+            Repetition::ZeroOrMore => self.parse_zero_or_more(stream, &factor.base, ctx),
+            Repetition::OneOrMore => self.parse_one_or_more(stream, &factor.base, ctx),
+            Repetition::Optional => self.parse_optional(stream, &factor.base, ctx),
+            Repetition::SeparatedZeroOrMore(sep) => {
+                self.parse_separated_zero_or_more(stream, &factor.base, sep, ctx)
+            }
+            Repetition::SeparatedOneOrMore(sep) => {
+                self.parse_separated_one_or_more(stream, &factor.base, sep, ctx)
             }
         }
     }
@@ -389,6 +389,322 @@ impl NativeParser {
         }).flatten();
 
         Ok(ParseResult::new(node, result.consumed))
+    }
+
+    /// Parse zero or more repetitions (*)
+    fn parse_zero_or_more(
+        &self,
+        stream: &mut InputStream,
+        base: &BaseFactor,
+        ctx: &mut ParseContext,
+    ) -> Result<ParseResult, ParseError> {
+        let start_pos = stream.position();
+        let mut children = Vec::new();
+        let mut total_consumed = 0;
+
+        // Keep matching until we fail
+        loop {
+            let loop_start = stream.position();
+            
+            // Try to match the base factor
+            match self.parse_base_factor(stream, base, ctx) {
+                Ok(result) => {
+                    // Epsilon-match detection: prevent infinite loops
+                    if result.consumed == 0 {
+                        // If we matched but consumed nothing, we'd loop forever
+                        // Break here (but keep the match if it produced a node)
+                        if let Some(node) = result.node {
+                            children.push(node);
+                        }
+                        break;
+                    }
+                    
+                    // Collect non-suppressed nodes
+                    if let Some(node) = result.node {
+                        children.push(node);
+                    }
+                    total_consumed += result.consumed;
+                }
+                Err(_) => {
+                    // Failed to match - that's OK for zero-or-more
+                    stream.set_position(loop_start); // Backtrack this attempt
+                    break;
+                }
+            }
+        }
+
+        // Return collected nodes (or None if all suppressed)
+        let node = if children.is_empty() {
+            None
+        } else if children.len() == 1 {
+            Some(children.into_iter().next().unwrap())
+        } else {
+            // Multiple children - wrap in sequence
+            Some(XmlNode::Element {
+                name: "_sequence".to_string(),
+                attributes: vec![],
+                children,
+            })
+        };
+
+        Ok(ParseResult::new(node, total_consumed))
+    }
+
+    /// Parse one or more repetitions (+)
+    fn parse_one_or_more(
+        &self,
+        stream: &mut InputStream,
+        base: &BaseFactor,
+        ctx: &mut ParseContext,
+    ) -> Result<ParseResult, ParseError> {
+        let start_pos = stream.position();
+
+        // Must match at least once
+        let first_result = self.parse_base_factor(stream, base, ctx)?;
+        let mut children = Vec::new();
+        let mut total_consumed = first_result.consumed;
+
+        if let Some(node) = first_result.node {
+            children.push(node);
+        }
+
+        // Epsilon-match check: if first match consumed nothing, don't loop
+        if first_result.consumed == 0 {
+            let node = if children.is_empty() {
+                None
+            } else {
+                Some(children.into_iter().next().unwrap())
+            };
+            return Ok(ParseResult::new(node, total_consumed));
+        }
+
+        // Try to match more
+        loop {
+            let loop_start = stream.position();
+            
+            match self.parse_base_factor(stream, base, ctx) {
+                Ok(result) => {
+                    // Epsilon-match detection
+                    if result.consumed == 0 {
+                        if let Some(node) = result.node {
+                            children.push(node);
+                        }
+                        break;
+                    }
+                    
+                    if let Some(node) = result.node {
+                        children.push(node);
+                    }
+                    total_consumed += result.consumed;
+                }
+                Err(_) => {
+                    stream.set_position(loop_start);
+                    break;
+                }
+            }
+        }
+
+        // Return collected nodes
+        let node = if children.is_empty() {
+            None
+        } else if children.len() == 1 {
+            Some(children.into_iter().next().unwrap())
+        } else {
+            Some(XmlNode::Element {
+                name: "_sequence".to_string(),
+                attributes: vec![],
+                children,
+            })
+        };
+
+        Ok(ParseResult::new(node, total_consumed))
+    }
+
+    /// Parse optional (?)
+    fn parse_optional(
+        &self,
+        stream: &mut InputStream,
+        base: &BaseFactor,
+        ctx: &mut ParseContext,
+    ) -> Result<ParseResult, ParseError> {
+        let start_pos = stream.position();
+
+        // Try to match once
+        match self.parse_base_factor(stream, base, ctx) {
+            Ok(result) => Ok(result),
+            Err(_) => {
+                // Failed - that's OK for optional
+                stream.set_position(start_pos);
+                Ok(ParseResult::new(None, 0))
+            }
+        }
+    }
+
+    /// Parse zero or more with separator (**)
+    fn parse_separated_zero_or_more(
+        &self,
+        stream: &mut InputStream,
+        base: &BaseFactor,
+        separator: &Sequence,
+        ctx: &mut ParseContext,
+    ) -> Result<ParseResult, ParseError> {
+        let start_pos = stream.position();
+        let mut children = Vec::new();
+        let mut total_consumed = 0;
+
+        // Try to match first element
+        let first_pos = stream.position();
+        match self.parse_base_factor(stream, base, ctx) {
+            Ok(result) => {
+                if let Some(node) = result.node {
+                    children.push(node);
+                }
+                total_consumed += result.consumed;
+
+                // Epsilon-match check
+                if result.consumed == 0 {
+                    return Ok(ParseResult::new(
+                        if children.is_empty() { None } else { Some(children.into_iter().next().unwrap()) },
+                        total_consumed
+                    ));
+                }
+            }
+            Err(_) => {
+                // No elements - that's OK for zero-or-more
+                stream.set_position(first_pos);
+                return Ok(ParseResult::new(None, 0));
+            }
+        }
+
+        // Try to match more: (separator element)*
+        loop {
+            let loop_start = stream.position();
+
+            // Try to match separator
+            match self.parse_sequence(stream, separator, ctx) {
+                Ok(sep_result) => {
+                    // Separator matched, now try element
+                    match self.parse_base_factor(stream, base, ctx) {
+                        Ok(elem_result) => {
+                            // Both matched - keep going
+                            if let Some(node) = elem_result.node {
+                                children.push(node);
+                            }
+                            total_consumed += sep_result.consumed + elem_result.consumed;
+
+                            // Epsilon-match check
+                            if elem_result.consumed == 0 {
+                                break;
+                            }
+                        }
+                        Err(_) => {
+                            // Element failed after separator - backtrack separator too
+                            stream.set_position(loop_start);
+                            break;
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Separator failed - we're done
+                    stream.set_position(loop_start);
+                    break;
+                }
+            }
+        }
+
+        // Return collected nodes
+        let node = if children.is_empty() {
+            None
+        } else if children.len() == 1 {
+            Some(children.into_iter().next().unwrap())
+        } else {
+            Some(XmlNode::Element {
+                name: "_sequence".to_string(),
+                attributes: vec![],
+                children,
+            })
+        };
+
+        Ok(ParseResult::new(node, total_consumed))
+    }
+
+    /// Parse one or more with separator (++)
+    fn parse_separated_one_or_more(
+        &self,
+        stream: &mut InputStream,
+        base: &BaseFactor,
+        separator: &Sequence,
+        ctx: &mut ParseContext,
+    ) -> Result<ParseResult, ParseError> {
+        let start_pos = stream.position();
+
+        // Must match at least one element
+        let first_result = self.parse_base_factor(stream, base, ctx)?;
+        let mut children = Vec::new();
+        let mut total_consumed = first_result.consumed;
+
+        if let Some(node) = first_result.node {
+            children.push(node);
+        }
+
+        // Epsilon-match check
+        if first_result.consumed == 0 {
+            return Ok(ParseResult::new(
+                if children.is_empty() { None } else { Some(children.into_iter().next().unwrap()) },
+                total_consumed
+            ));
+        }
+
+        // Try to match more: (separator element)*
+        loop {
+            let loop_start = stream.position();
+
+            // Try to match separator
+            match self.parse_sequence(stream, separator, ctx) {
+                Ok(sep_result) => {
+                    // Separator matched, now try element
+                    match self.parse_base_factor(stream, base, ctx) {
+                        Ok(elem_result) => {
+                            // Both matched
+                            if let Some(node) = elem_result.node {
+                                children.push(node);
+                            }
+                            total_consumed += sep_result.consumed + elem_result.consumed;
+
+                            // Epsilon-match check
+                            if elem_result.consumed == 0 {
+                                break;
+                            }
+                        }
+                        Err(_) => {
+                            // Element failed after separator - backtrack
+                            stream.set_position(loop_start);
+                            break;
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Separator failed - we're done
+                    stream.set_position(loop_start);
+                    break;
+                }
+            }
+        }
+
+        // Return collected nodes
+        let node = if children.is_empty() {
+            None
+        } else if children.len() == 1 {
+            Some(children.into_iter().next().unwrap())
+        } else {
+            Some(XmlNode::Element {
+                name: "_sequence".to_string(),
+                attributes: vec![],
+                children,
+            })
+        };
+
+        Ok(ParseResult::new(node, total_consumed))
     }
 }
 

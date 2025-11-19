@@ -17,6 +17,8 @@ fn main() {
         ("hex", "ixml_tests/correct"),
         ("hex1", "ixml_tests/correct"),
         ("range", "ixml_tests/correct"),
+        ("string", "ixml_tests/correct"),
+        ("hash", "ixml_tests/correct"),
     ];
 
     let mut passed = 0;
