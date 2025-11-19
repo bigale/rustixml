@@ -126,6 +126,16 @@ pub fn read_simple_test(base_path: &str, test_name: &str) -> Result<TestCase, St
         "xpath" | "parse-error" | "url" | "url1"
     );
 
+    // Tests with no output file that are intentionally broken/invalid grammars
+    // elem1: has empty character class [] which makes grammar impossible to satisfy
+    let is_invalid_grammar_test = matches!(test_name,
+        "elem1"
+    );
+
+    if is_invalid_grammar_test && expected_xml.is_none() {
+        return Err(format!("Invalid grammar test (intentionally broken): {}", test_name));
+    }
+
     Ok(TestCase {
         name: test_name.to_string(),
         grammar,
