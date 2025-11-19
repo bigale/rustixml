@@ -1643,6 +1643,20 @@ pub enum XmlNode {
 }
 
 impl XmlNode {
+    /// Extract text content from a node (for attributes)
+    pub fn text_content(&self) -> String {
+        match self {
+            XmlNode::Text(s) => s.clone(),
+            XmlNode::Element { children, .. } => {
+                children.iter()
+                    .map(|child| child.text_content())
+                    .collect::<Vec<_>>()
+                    .join("")
+            }
+            XmlNode::Attribute { value, .. } => value.clone(),
+        }
+    }
+
     fn escape_xml_attr(s: &str) -> String {
         // We use single quotes for attribute values
         // Per XML spec, in attributes we must escape: &, <, ' (when using single quotes)

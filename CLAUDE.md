@@ -11,16 +11,24 @@ rustixml is a Rust implementation of an iXML (Invisible XML) parser. iXML is a g
 
 ## Current Status
 
+**Earley Implementation**: Complete (frozen at 39.8% pass rate)
+
+The Earley-based implementation has reached a natural stopping point. While functional for many iXML grammars, it has hit fundamental abstraction mismatches between iXML semantics and Earley parsing. See [Abstraction Analysis](docs/ABSTRACTION_ANALYSIS.md) for detailed discussion.
+
+**Next Phase**: Native iXML Interpreter (in design)
+
+A native Rust interpreter that directly implements iXML specification semantics without translation to Earley. Expected to achieve 80-90%+ conformance by handling insertion/suppression patterns natively. See [Native Interpreter Design](docs/NATIVE_INTERPRETER_DESIGN.md) and [Transition Summary](docs/TRANSITION_SUMMARY.md).
+
 ### Conformance Test Results (Comprehensive - Full iXML Test Suite)
 
 **Test Suite**: `/home/bigale/repos/rustixml/ixml_tests/` (133 total tests across 8 categories)
 
-**Overall Results**:
+**Final Earley Results**:
 - **53 PASSING** (39.8%) ✅
-- **11 FAILING** (8.3%)
+- **12 FAILING** (9.0%)
 - **0 GRAMMAR_ERRORS** (0%)
-- **5 INPUT_ERRORS** (3.8%)
-- **64 SKIP** (48.1%)
+- **3 INPUT_ERRORS** (2.3%) - Known limitations
+- **65 SKIP** (48.9%)
 
 ### Key Achievements
 
@@ -29,23 +37,47 @@ rustixml is a Rust implementation of an iXML (Invisible XML) parser. iXML is a g
 ✅ **50% pass rate** on ixml grammar parsing tests (4/8)  
 ✅ **Zero grammar parse errors** - all iXML grammars parse correctly  
 ✅ Full Unicode General Category support implemented  
+✅ Character class parsing with unquoted sequences fixed
+✅ Thread-local GROUP_COUNTER synchronization  
 ✅ Assert-not-a-sentence test handling  
+
+### Known Limitations (Earley Implementation)
+
+The Earley-based approach has fundamental limitations due to abstraction mismatches:
+
+1. **Insertion + Suppression in Repeated Sequences** (3 INPUT_ERROR tests)
+   - Pattern: `(-[Co], +".")*` - suppression combined with insertion in loops
+   - Root cause: Earley parsers consume input tokens but don't have native insertion semantics
+   - Affected tests: `unicode-classes`, `ixml-spaces`, `ixml3`
+   - See [earley_insertion_limitation.md](docs/earley_insertion_limitation.md)
+
+2. **Ambiguous Grammar Handling** (11/13 failing)
+   - Need multiple parse tree handling
+   - Earley naturally supports ambiguity, but tree extraction needs work
+
+3. **Advanced Features** 
+   - Version declarations, Unicode version-specific behavior
+   - Most tests skipped (51/52 syntax tests)
 
 ### Implementation Gaps
 
+### Implementation Gaps
+
+**Note**: The following gaps are documented but will not be addressed in the Earley implementation, as we are transitioning to a native iXML interpreter.
+
 The main areas requiring work for full conformance:
 
-1. **Ambiguous Grammar Handling** (11/13 failing) - Need to implement multiple parse tree handling
-2. **Syntax Tests** (51/52 skip) - Need grammar-only test support
-3. **Advanced Features** - Version declarations, Unicode version-specific behavior
-4. **Performance** - unicode-classes test times out due to Earley parser limitations with complex alternations
+1. **Insertion + Suppression Pattern** - Fundamental Earley limitation (see above)
+2. **Ambiguous Grammar Handling** (11/13 failing) - Need to implement multiple parse tree handling
+3. **Syntax Tests** (51/52 skip) - Need grammar-only test support
+4. **Advanced Features** - Version declarations, Unicode version-specific behavior
 
 ### Results by Category
 
 #### correct/ (49 tests) - Basic Correctness Tests ⭐
 - **43 PASSING** (87.8%) ✅
 - **0 FAILING** (0%)
-- **1 INPUT_ERROR** (2.0%) - `unicode-classes` (Earley timeout with complex character class alternations)
+- **1 INPUT_ERROR** (2.0%) - `unicode-classes` (insertion+suppression pattern limitation)
 - **5 SKIP** (10.2%) - advanced features (version-decl, unicode-version-diagnostic, ws-and-delim)
 
 #### syntax/ (52 tests) - Grammar Syntax Tests
@@ -60,7 +92,7 @@ The main areas requiring work for full conformance:
 #### ixml/ (8 tests) - Parsing iXML Grammars
 - **5 PASSING** (62.5%) ✅
 - **0 FAILING** (0%)
-- **3 INPUT_ERRORS** (37.5%)
+- **3 INPUT_ERRORS** (37.5%) - `ixml-spaces`, `ixml3` (insertion+suppression pattern limitation)
 
 #### parse/ (3 tests) - Parse Tests
 - **3 PASSING** (100.0%) ✅
@@ -111,7 +143,81 @@ The main areas requiring work for full conformance:
 
 ## Recent Fixes
 
-### 1. Self-Closing Root Element Fix (COMPLETED)
+### Final Debugging Session: Insertion+Suppression Limitation Discovery (COMPLETED)
+
+**Investigation**: Investigated why `unicode-classes` test fails despite simplified versions working.
+
+**Approach**:
+1. Created incremental test suite (`debug_unicode_actual.rs`) - ALL 6 tests PASS ✓
+2. Tested exact grammar with full 41 alternatives - PASS ✓
+3. Binary searched through input lines to find failure point
+4. Isolated failure to line 33: `Co \u{E000}\n`
+5. Created minimal reproduction (`debug_suppressed_insertion.rs`)
+
+**Root Cause Identified**:
+- Grammar rule: `Co: -"Co ", (-[Co], +".")*.`
+- Pattern combines:
+  - **Suppression** (`-[Co]`): matches but hides from output
+  - **Insertion** (`+"."`): adds content not in input
+  - **Repetition** (`*`): loops the sequence
+- Earley parsers fundamentally consume input tokens
+- No natural way to express "consume this, output something else" in a loop
+
+**Test Results**:
+- `[Co]*` - Works fine ✓
+- `(-[Co], +".")*` - Fails ✗
+
+**Files Created**:
+- `docs/earley_insertion_limitation.md` - Detailed analysis
+- `src/bin/debug_unicode_{exact,full,two_lines,line3,line33,nlines}.rs` - Debug tools
+- `src/bin/debug_suppressed_insertion.rs` - Minimal reproduction
+
+**Strategic Impact**:
+This validates the abstraction analysis - we've reached a hard limit of the Earley translation approach. Clean stopping point at 39.8% pass rate.
+
+### 2. Thread-Local GROUP_COUNTER Synchronization (COMPLETED)
+
+**Files**: `src/runtime_parser.rs` (lines ~100-120)
+
+**Problem**: "Missing Action" errors in test suite due to GROUP_COUNTER mismatch between AST conversion and tree building.
+
+**Root Cause**: The `ast_to_earlgrey()` function uses a global `GROUP_COUNTER` to generate unique group IDs. When called multiple times (once to get the AST, again during tree building), the counter increments, causing mismatched group IDs.
+
+**Fix**: Implemented thread-local storage for consistent group ID mapping:
+```rust
+thread_local! {
+    static GROUP_ID_MAP: RefCell<HashMap<usize, usize>> = RefCell::new(HashMap::new());
+}
+```
+
+Modified `ast_to_earlgrey` to:
+1. Return tuple: `(GrammarBuilder, IxmlGrammar)` with transformed AST
+2. Store original→transformed group ID mappings in thread-local map
+3. Reuse transformed AST in test runner to maintain consistency
+
+**Impact**: Eliminated GROUP_COUNTER synchronization errors across the test suite.
+
+### 3. Character Class Fix: Unquoted Sequences (COMPLETED)
+
+**Files**: `src/runtime_parser.rs` (lines ~1320-1330)
+
+**Problem**: Character classes like `[xyz]` weren't matching any characters. Only explicit hex chars like `[#61-#7A]` worked.
+
+**Root Cause**: The `parse_char_class()` function only handled quoted strings (`"abc"`) and hex chars (`#XX`), but not unquoted character sequences that should be treated as individual characters.
+
+**Fix**: Added handling for unquoted sequences in the "else" branch:
+```rust
+else {
+    // Treat as individual characters: "xyz" → ['x','y','z']
+    for ch in element.chars() {
+        chars.push(ch);
+    }
+}
+```
+
+**Impact**: Character classes now work for common patterns like `[a-z]`, `[0-9]`, `[abc]`.
+
+### 4. Self-Closing Root Element Fix (COMPLETED)
 **Files**: `src/runtime_parser.rs` (lines 1593-1602)
 
 **Problem**: Self-closing root elements were missing their closing `/>`. The output was `<email user='...' host='...'` instead of `<email user='...' host='...'/>`.

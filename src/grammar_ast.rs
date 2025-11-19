@@ -330,6 +330,7 @@ pub fn parse_ixml_grammar_old(input: &str) -> Result<IxmlGrammar, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::{BaseFactor, Mark, Repetition};
 
     #[test]
     fn test_rule_with_literal() {

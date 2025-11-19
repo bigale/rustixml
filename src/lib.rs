@@ -19,6 +19,11 @@ pub mod runtime_parser;  // Runtime parser using Earlgrey (Phase 3)
 pub mod testsuite_utils;  // Test suite infrastructure
 pub mod working_test;  // Phase 1 working grammar for comparison
 
+// Native interpreter modules (new implementation)
+pub mod input_stream;  // Input stream with backtracking
+pub mod parse_context;  // Parse state and error types
+pub mod native_parser;  // Direct iXML interpreter
+
 pub use lexer::{Lexer, Token};
 
 #[deprecated(since = "0.2.0", note = "Use `grammar_ast::parse_ixml_grammar()` instead - 1.5M times faster!")]
