@@ -15,8 +15,9 @@ pub struct ParseContext {
     /// Recursion depth (for debugging and loop detection)
     pub depth: usize,
     
-    /// Rules currently on the call stack (for left-recursion detection)
-    pub left_recursion: HashSet<String>,
+    /// (rule_name, position) pairs currently on the call stack
+    /// for left-recursion detection
+    pub left_recursion: HashSet<(String, usize)>,
 }
 
 impl ParseContext {
@@ -29,24 +30,26 @@ impl ParseContext {
         }
     }
 
-    /// Enter a rule (push onto recursion stack)
-    pub fn enter_rule(&mut self, rule_name: &str) -> bool {
+    /// Enter a rule at a specific position (push onto recursion stack)
+    pub fn enter_rule(&mut self, rule_name: &str, position: usize) -> bool {
         self.depth += 1;
         self.rule_name = rule_name.to_string();
         
-        // Check if we're already parsing this rule (direct left-recursion)
-        if self.left_recursion.contains(rule_name) {
+        // Check if we're already parsing this rule at this position (left-recursion)
+        let key = (rule_name.to_string(), position);
+        if self.left_recursion.contains(&key) {
             return false; // Left recursion detected
         }
         
-        self.left_recursion.insert(rule_name.to_string());
+        self.left_recursion.insert(key);
         true
     }
 
-    /// Exit a rule (pop from recursion stack)
-    pub fn exit_rule(&mut self, rule_name: &str) {
+    /// Exit a rule at a specific position (pop from recursion stack)
+    pub fn exit_rule(&mut self, rule_name: &str, position: usize) {
         self.depth = self.depth.saturating_sub(1);
-        self.left_recursion.remove(rule_name);
+        let key = (rule_name.to_string(), position);
+        self.left_recursion.remove(&key);
     }
 }
 
@@ -274,38 +277,38 @@ mod tests {
     fn test_enter_exit_rule() {
         let mut ctx = ParseContext::new();
 
-        assert!(ctx.enter_rule("test"));
+        assert!(ctx.enter_rule("test", 0));
         assert_eq!(ctx.depth, 1);
         assert_eq!(ctx.rule_name, "test");
-        assert!(ctx.left_recursion.contains("test"));
+        assert!(ctx.left_recursion.contains(&("test".to_string(), 0)));
 
-        // Direct left recursion should fail (but depth still increments)
-        assert!(!ctx.enter_rule("test"));
+        // Direct left recursion at same position should fail
+        assert!(!ctx.enter_rule("test", 0));
         assert_eq!(ctx.depth, 2); // Depth incremented even though recursion detected
 
-        ctx.exit_rule("test");
+        ctx.exit_rule("test", 0);
         assert_eq!(ctx.depth, 1); // Back to level 1
         
-        ctx.exit_rule("test");
+        ctx.exit_rule("test", 0);
         assert_eq!(ctx.depth, 0);
-        assert!(!ctx.left_recursion.contains("test"));
+        assert!(!ctx.left_recursion.contains(&("test".to_string(), 0)));
     }
 
     #[test]
     fn test_nested_rules() {
         let mut ctx = ParseContext::new();
 
-        assert!(ctx.enter_rule("rule1"));
-        assert!(ctx.enter_rule("rule2"));
+        assert!(ctx.enter_rule("rule1", 0));
+        assert!(ctx.enter_rule("rule2", 5));
         assert_eq!(ctx.depth, 2);
-        assert!(ctx.left_recursion.contains("rule1"));
-        assert!(ctx.left_recursion.contains("rule2"));
+        assert!(ctx.left_recursion.contains(&("rule1".to_string(), 0)));
+        assert!(ctx.left_recursion.contains(&("rule2".to_string(), 5)));
 
-        ctx.exit_rule("rule2");
+        ctx.exit_rule("rule2", 5);
         assert_eq!(ctx.depth, 1);
-        assert!(!ctx.left_recursion.contains("rule2"));
+        assert!(!ctx.left_recursion.contains(&("rule2".to_string(), 5)));
 
-        ctx.exit_rule("rule1");
+        ctx.exit_rule("rule1", 0);
         assert_eq!(ctx.depth, 0);
     }
 

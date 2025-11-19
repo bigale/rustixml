@@ -72,17 +72,19 @@ impl NativeParser {
         rule: &Rule,
         ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
-        // Check for left recursion
-        if !ctx.enter_rule(&rule.name) {
+        let start_pos = stream.position();
+        
+        // Check for left recursion at this position
+        if !ctx.enter_rule(&rule.name, start_pos) {
             return Err(ParseError::LeftRecursion {
                 rule: rule.name.clone(),
-                position: stream.position(),
+                position: start_pos,
             });
         }
 
         let result = self.parse_alternatives(stream, &rule.alternatives, ctx);
 
-        ctx.exit_rule(&rule.name);
+        ctx.exit_rule(&rule.name, start_pos);
 
         // Apply rule-level mark to result
         result.and_then(|res| Ok(self.apply_rule_mark(res, rule)))
@@ -160,25 +162,48 @@ impl NativeParser {
         ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
         let start_pos = stream.position();
+        let mut best_result: Option<(ParseResult, usize)> = None; // (result, end_position)
         let mut attempts = 0;
 
-        // Try each alternative in order (PEG-style: first match wins)
-        for alt in &alts.alts {
+        // Try each alternative and keep the longest match
+        for (_, alt) in alts.alts.iter().enumerate() {
             stream.set_position(start_pos); // Reset for each alternative
             attempts += 1;
 
             match self.parse_sequence(stream, alt, ctx) {
-                Ok(result) => return Ok(result),
-                Err(_) => continue, // Try next alternative
+                Ok(result) => {
+                    let end_pos = stream.position();
+                    
+                    // Keep this result if it's the longest match so far
+                    match &best_result {
+                        None => {
+                            best_result = Some((result, end_pos));
+                        }
+                        Some((_, best_end)) => {
+                            if end_pos > *best_end {
+                                best_result = Some((result, end_pos));
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    continue; // Try next alternative
+                }
             }
         }
 
-        // All alternatives failed
-        Err(ParseError::NoAlternativeMatched {
-            position: start_pos,
-            rule: ctx.rule_name.clone(),
-            attempts,
-        })
+        // Return the longest match, or error if all failed
+        match best_result {
+            Some((result, end_pos)) => {
+                stream.set_position(end_pos); // Commit to longest match
+                Ok(result)
+            }
+            None => Err(ParseError::NoAlternativeMatched {
+                position: start_pos,
+                rule: ctx.rule_name.clone(),
+                attempts,
+            }),
+        }
     }
 
     /// Parse a sequence (concatenation)
