@@ -24,7 +24,7 @@ fn main() {
                             println!("Grammar builder created successfully");
 
                             // Try to build with better error handling
-                            match grammar_builder.into_grammar("test") {
+                            match grammar_builder.0.into_grammar("test") {
                                 Ok(_grammar) => {
                                     println!("Grammar built successfully!");
                                 }

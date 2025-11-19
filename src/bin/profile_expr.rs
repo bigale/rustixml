@@ -35,7 +35,7 @@ fn main() {
                             // In iXML, the first rule is the start symbol
                             let start_symbol = &ast.rules[0].name;
                             println!("Start symbol: {}", start_symbol);
-                            let grammar = match grammar_builder.into_grammar(start_symbol) {
+                            let grammar = match grammar_builder.0.into_grammar(start_symbol) {
                                 Ok(g) => g,
                                 Err(e) => {
                                     println!("Grammar build error: {}", e);

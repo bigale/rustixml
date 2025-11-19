@@ -18,7 +18,7 @@ letter: ["a"-"z"]."#;
     let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
 
     println!("\n=== Building Grammar ===\n");
-    let grammar = builder.into_grammar("word").expect("Failed to build grammar");
+    let grammar = builder.0.into_grammar("word").expect("Failed to build grammar");
 
     println!("✅ Grammar built successfully!\n");
 

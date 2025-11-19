@@ -56,7 +56,7 @@ fn test_grammar(name: &str, grammar_src: &str, input: &str) {
             match ast_to_earlgrey(&ast) {
                 Ok(builder) => {
                     let start = &ast.rules[0].name;
-                    match builder.into_grammar(start) {
+                    match builder.0.into_grammar(start) {
                         Ok(grammar) => {
                             let parser = EarleyParser::new(grammar);
                             let tokens: Vec<String> = input.chars().map(|c| c.to_string()).collect();

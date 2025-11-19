@@ -7,6 +7,8 @@ use earlgrey::{EarleyParser, GrammarBuilder, EarleyForest};
 use crate::ast::{IxmlGrammar, Rule, Alternatives, Sequence, Factor, BaseFactor, Repetition, Mark};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::{HashMap, BTreeSet};
+use unicode_general_category::{get_general_category, GeneralCategory};
+use std::cell::RefCell;
 
 // ============================================================================
 // Character Class Partitioning (Phase 1 Optimization)
@@ -146,6 +148,11 @@ impl RangeSet {
         false
     }
 
+    /// Get the number of ranges in this set
+    pub fn num_ranges(&self) -> usize {
+        self.ranges.len()
+    }
+
     /// Generate a unique name for this RangeSet
     pub fn to_name(&self) -> String {
         let mut parts = Vec::new();
@@ -214,6 +221,164 @@ fn split_charclass_content(content: &str) -> Vec<String> {
     }
 
     elements
+}
+
+/// Convert a Unicode General Category name to a RangeSet
+/// Supports both major categories (L, M, N, P, S, Z, C) and minor categories (Lu, Ll, etc.)
+/// Convert a Unicode category name to a RangeSet.
+/// This function is cached internally to avoid recomputing expensive ranges.
+pub fn unicode_category_to_rangeset(category_name: &str) -> Option<RangeSet> {
+    use std::sync::{Mutex, OnceLock};
+    
+    // Cache for Unicode category rangesets
+    static UNICODE_CACHE: OnceLock<Mutex<HashMap<String, RangeSet>>> = OnceLock::new();
+    
+    // Get or initialize the cache
+    let cache = UNICODE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    
+    // Check if we have it cached
+    {
+        let cache_lock = cache.lock().unwrap();
+        if let Some(rangeset) = cache_lock.get(category_name) {
+            return Some(rangeset.clone());
+        }
+    }
+    
+    // Not cached, compute it
+    let mut result = RangeSet::new();
+
+    // Check if this is a valid Unicode category name
+    let is_major = matches!(category_name, "L" | "M" | "N" | "P" | "S" | "Z" | "C");
+    let is_minor = matches!(category_name,
+        "Lu" | "Ll" | "Lt" | "Lm" | "Lo" | "LC" |
+        "Mn" | "Mc" | "Me" |
+        "Nd" | "Nl" | "No" |
+        "Pc" | "Pd" | "Ps" | "Pe" | "Pi" | "Pf" | "Po" |
+        "Sm" | "Sc" | "Sk" | "So" |
+        "Zs" | "Zl" | "Zp" |
+        "Cc" | "Cf" | "Cs" | "Co" | "Cn"
+    );
+
+    if !is_major && !is_minor {
+        return None;
+    }
+
+    // Helper to check if a GeneralCategory matches a category name
+    let matches_category = |cat: GeneralCategory, name: &str| -> bool {
+        match name {
+            // Major categories
+            "L" => matches!(cat,
+                GeneralCategory::UppercaseLetter |
+                GeneralCategory::LowercaseLetter |
+                GeneralCategory::TitlecaseLetter |
+                GeneralCategory::ModifierLetter |
+                GeneralCategory::OtherLetter),
+            "LC" => matches!(cat,
+                GeneralCategory::UppercaseLetter |
+                GeneralCategory::LowercaseLetter |
+                GeneralCategory::TitlecaseLetter),
+            "M" => matches!(cat,
+                GeneralCategory::NonspacingMark |
+                GeneralCategory::SpacingMark |
+                GeneralCategory::EnclosingMark),
+            "N" => matches!(cat,
+                GeneralCategory::DecimalNumber |
+                GeneralCategory::LetterNumber |
+                GeneralCategory::OtherNumber),
+            "P" => matches!(cat,
+                GeneralCategory::ConnectorPunctuation |
+                GeneralCategory::DashPunctuation |
+                GeneralCategory::OpenPunctuation |
+                GeneralCategory::ClosePunctuation |
+                GeneralCategory::InitialPunctuation |
+                GeneralCategory::FinalPunctuation |
+                GeneralCategory::OtherPunctuation),
+            "S" => matches!(cat,
+                GeneralCategory::MathSymbol |
+                GeneralCategory::CurrencySymbol |
+                GeneralCategory::ModifierSymbol |
+                GeneralCategory::OtherSymbol),
+            "Z" => matches!(cat,
+                GeneralCategory::SpaceSeparator |
+                GeneralCategory::LineSeparator |
+                GeneralCategory::ParagraphSeparator),
+            "C" => matches!(cat,
+                GeneralCategory::Control |
+                GeneralCategory::Format |
+                GeneralCategory::Surrogate |
+                GeneralCategory::PrivateUse |
+                GeneralCategory::Unassigned),
+            // Minor categories
+            "Lu" => cat == GeneralCategory::UppercaseLetter,
+            "Ll" => cat == GeneralCategory::LowercaseLetter,
+            "Lt" => cat == GeneralCategory::TitlecaseLetter,
+            "Lm" => cat == GeneralCategory::ModifierLetter,
+            "Lo" => cat == GeneralCategory::OtherLetter,
+            "Mn" => cat == GeneralCategory::NonspacingMark,
+            "Mc" => cat == GeneralCategory::SpacingMark,
+            "Me" => cat == GeneralCategory::EnclosingMark,
+            "Nd" => cat == GeneralCategory::DecimalNumber,
+            "Nl" => cat == GeneralCategory::LetterNumber,
+            "No" => cat == GeneralCategory::OtherNumber,
+            "Pc" => cat == GeneralCategory::ConnectorPunctuation,
+            "Pd" => cat == GeneralCategory::DashPunctuation,
+            "Ps" => cat == GeneralCategory::OpenPunctuation,
+            "Pe" => cat == GeneralCategory::ClosePunctuation,
+            "Pi" => cat == GeneralCategory::InitialPunctuation,
+            "Pf" => cat == GeneralCategory::FinalPunctuation,
+            "Po" => cat == GeneralCategory::OtherPunctuation,
+            "Sm" => cat == GeneralCategory::MathSymbol,
+            "Sc" => cat == GeneralCategory::CurrencySymbol,
+            "Sk" => cat == GeneralCategory::ModifierSymbol,
+            "So" => cat == GeneralCategory::OtherSymbol,
+            "Zs" => cat == GeneralCategory::SpaceSeparator,
+            "Zl" => cat == GeneralCategory::LineSeparator,
+            "Zp" => cat == GeneralCategory::ParagraphSeparator,
+            "Cc" => cat == GeneralCategory::Control,
+            "Cf" => cat == GeneralCategory::Format,
+            "Cs" => cat == GeneralCategory::Surrogate,
+            "Co" => cat == GeneralCategory::PrivateUse,
+            "Cn" => cat == GeneralCategory::Unassigned,
+            _ => false,
+        }
+    };
+
+    // Iterate through all valid Unicode codepoints and collect matching characters
+    // Unicode goes up to 0x10FFFF (1,114,111 code points)
+    let mut range_start: Option<char> = None;
+    let mut prev_char: Option<char> = None;
+
+    for codepoint in 0u32..=0x10FFFF {
+        if let Some(ch) = char::from_u32(codepoint) {
+            let cat = get_general_category(ch);
+            if matches_category(cat, category_name) {
+                if range_start.is_none() {
+                    range_start = Some(ch);
+                }
+                prev_char = Some(ch);
+            } else {
+                // End of range
+                if let (Some(start), Some(end)) = (range_start, prev_char) {
+                    result.add_range(start, end);
+                }
+                range_start = None;
+                prev_char = None;
+            }
+        }
+    }
+
+    // Don't forget the last range
+    if let (Some(start), Some(end)) = (range_start, prev_char) {
+        result.add_range(start, end);
+    }
+
+    // Cache the result before returning
+    {
+        let mut cache_lock = cache.lock().unwrap();
+        cache_lock.insert(category_name.to_string(), result.clone());
+    }
+
+    Some(result)
 }
 
 /// Parse a character class content string into a RangeSet
@@ -314,7 +479,10 @@ fn charclass_to_rangeset(content: &str) -> RangeSet {
                 result.add_char(ch);
             }
         }
-        // Unicode category - skip for now (handled separately)
+        // Unicode category - try to match category names like L, Ll, Lu, etc.
+        else if let Some(category_rangeset) = unicode_category_to_rangeset(element) {
+            result = result.union(&category_rangeset);
+        }
     }
 
     result
@@ -546,6 +714,12 @@ fn rangeset_to_charclass_content(rs: &RangeSet) -> String {
 // Global counter for generating unique group IDs
 static GROUP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+// Thread-local storage for group pointer -> group_id mapping
+// This ensures that group IDs are consistent between grammar conversion and XML generation
+thread_local! {
+    static GROUP_ID_MAP: RefCell<HashMap<usize, usize>> = RefCell::new(HashMap::new());
+}
+
 /// Helper function to normalize character class content by removing quote characters
 /// Supports both single quotes (') and double quotes (") per iXML spec flexibility
 fn normalize_charclass_content(content: &str) -> String {
@@ -649,17 +823,20 @@ const ENABLE_CHARCLASS_PARTITIONING: bool = false;
 ///
 /// This is the "translator" that takes our parsed iXML grammar and converts it
 /// to Earlgrey's format so we can use it to parse input at runtime.
-pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> {
+pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<(GrammarBuilder, IxmlGrammar), String> {
     // Reset group counter for deterministic group naming across conversion and XML generation
     GROUP_COUNTER.store(0, Ordering::SeqCst);
+    
+    // Clear the group ID mapping for this new parse session
+    GROUP_ID_MAP.with(|map| map.borrow_mut().clear());
 
     // Optionally transform the AST for character class partitioning
-    let grammar = if ENABLE_CHARCLASS_PARTITIONING {
+    let transformed_grammar = if ENABLE_CHARCLASS_PARTITIONING {
         partition_charclasses_in_ast(grammar)
     } else {
         grammar.clone()
     };
-    let grammar = &grammar;
+    let grammar = &transformed_grammar;
 
     let mut builder = GrammarBuilder::default();
 
@@ -722,7 +899,7 @@ pub fn ast_to_earlgrey(grammar: &IxmlGrammar) -> Result<GrammarBuilder, String> 
         builder = convert_rule(builder, rule, &mut created_repetitions)?;
     }
 
-    Ok(builder)
+    Ok((builder, transformed_grammar))
 }
 
 /// Collect all unique characters from literal strings in the grammar
@@ -1172,32 +1349,13 @@ fn parse_char_class(content: &str, negated: bool) -> Box<dyn Fn(&str) -> bool + 
             }
         }
 
-        // Check Unicode categories
+        // Check Unicode categories using the proper unicode-general-category crate
         for category in &unicode_categories {
-            let category_matches = match category.as_str() {
-                "L" => ch.is_alphabetic(),
-                "Ll" => ch.is_lowercase(),
-                "Lu" => ch.is_uppercase(),
-                "Lt" => ch.is_uppercase(), // Titlecase (approximation)
-                "Lm" => ch.is_alphabetic(), // Modifier letter (approximation)
-                "Lo" => ch.is_alphabetic(), // Other letter (approximation)
-                "M" => false, // Mark categories (not easily checked in Rust)
-                "N" => ch.is_numeric(),
-                "Nd" => ch.is_numeric() && ch.is_ascii_digit(),
-                "Nl" => ch.is_numeric(), // Letter number (approximation)
-                "No" => ch.is_numeric(), // Other number (approximation)
-                "P" => ch.is_ascii_punctuation(),
-                "S" => !ch.is_alphanumeric() && !ch.is_whitespace(), // Symbol (approximation)
-                "Z" => ch.is_whitespace(),
-                "Zs" => ch == ' ', // Space separator
-                "Zl" => ch == '\u{2028}', // Line separator
-                "Zp" => ch == '\u{2029}', // Paragraph separator
-                "C" => ch.is_control(),
-                _ => false,
-            };
-            if category_matches {
-                matches = true;
-                break;
+            if let Some(category_rangeset) = unicode_category_to_rangeset(category) {
+                if category_rangeset.contains(ch) {
+                    matches = true;
+                    break;
+                }
             }
         }
 
@@ -1314,6 +1472,13 @@ fn convert_factor(mut builder: GrammarBuilder, factor: &Factor, created_reps: &m
             // Generate a unique name for this group
             let group_id = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
             let group_name = format!("group_{}", group_id);
+
+            // Store the mapping from this group's pointer to its assigned ID
+            // Use the alternatives pointer as a unique key
+            let group_key = alternatives.as_ref() as *const Alternatives as usize;
+            GROUP_ID_MAP.with(|map| {
+                map.borrow_mut().insert(group_key, group_id);
+            });
 
             // Declare the nonterminal for this group
             let mut b = builder.nonterm(&group_name);
@@ -2104,9 +2269,16 @@ fn register_group_actions_from_alternatives(
     for seq in &alts.alts {
         for factor in &seq.factors {
             if let BaseFactor::Group { alternatives } = &factor.base {
-                // Assign ID to this group
-                let group_id = *group_counter;
-                *group_counter += 1;
+                // Look up the group ID from the mapping (created during grammar conversion)
+                let group_key = alternatives.as_ref() as *const Alternatives as usize;
+                let group_id = GROUP_ID_MAP.with(|map| {
+                    map.borrow().get(&group_key).copied().unwrap_or_else(|| {
+                        eprintln!("Warning: Group not found in mapping at registration, using fallback counter");
+                        let id = *group_counter;
+                        *group_counter += 1;
+                        id
+                    })
+                });
                 let group_name = format!("group_{}", group_id);
 
                 // Register actions for each alternative in the group
@@ -2180,9 +2352,17 @@ fn build_symbol_list_for_sequence(seq: &Sequence, group_counter: &mut usize) -> 
                     format!("charclass_{}", normalize_charclass_content(content))
                 }
             }
-            BaseFactor::Group { .. } => {
-                // For groups, use current counter (incremented by register_group_actions)
-                let group_id = *group_counter;
+            BaseFactor::Group { alternatives } => {
+                // Look up the group ID from the mapping (created during grammar conversion)
+                let group_key = alternatives.as_ref() as *const Alternatives as usize;
+                let group_id = GROUP_ID_MAP.with(|map| {
+                    map.borrow().get(&group_key).copied().unwrap_or_else(|| {
+                        eprintln!("Warning: Group not found in mapping at symbol list building, using counter");
+                        let id = *group_counter;
+                        *group_counter += 1;
+                        id
+                    })
+                });
                 format!("group_{}", group_id)
             }
         };
@@ -2340,7 +2520,160 @@ fn register_marked_literal_from_alternatives(
             if let BaseFactor::Group { alternatives } = &factor.base {
                 register_marked_literal_from_alternatives(forest, alternatives);
             }
+
+            // Also process separator sequences in repetition operators
+            match &factor.repetition {
+                Repetition::SeparatedZeroOrMore(sep) | Repetition::SeparatedOneOrMore(sep) => {
+                    for sep_factor in &sep.factors {
+                        register_marked_literal_from_factor(forest, sep_factor);
+                    }
+                }
+                _ => {}, // Other repetitions don't have separators
+            }
         }
+    }
+}
+
+/// Register actions for a single marked literal factor (helper for recursion)
+fn register_marked_literal_from_factor(
+    forest: &mut EarleyForest<'static, XmlNode>,
+    factor: &Factor,
+) {
+    // Check if this factor is a marked literal
+    if let BaseFactor::Literal { value, mark, .. } = &factor.base {
+        if *mark != Mark::None {
+            // Get the base symbol name
+            let base = if value.chars().count() == 1 {
+                let ch = value.chars().next().unwrap();
+                char_terminal_name(ch)
+            } else {
+                format!("lit_seq_{}", normalize_literal_sequence(value))
+            };
+
+            let marked_name = format!("{}_{}", base, mark_suffix(*mark));
+            let production = format!("{} -> {}", marked_name, base);
+
+            // Optionally log registration for diagnostics
+            if std::env::var("RUSTIXML_DEBUG_REGISTRATION").is_ok() {
+                eprintln!("[reg] registering production: {}", production);
+            }
+
+            // Register action based on mark type
+            match mark {
+                Mark::Hidden => {
+                    // Hidden: don't include in output
+                    forest.action(&production, |_nodes| {
+                        // Return an empty element that will be unwrapped by parent
+                        XmlNode::Element {
+                            name: "_hidden".to_string(),
+                            attributes: vec![],
+                            children: vec![],
+                        }
+                    });
+                }
+                Mark::Attribute => {
+                    // Attribute: extract text and create attribute node
+                    let name_clone = marked_name.clone();
+                    forest.action(&production, move |nodes| {
+                        let text = extract_text_from_nodes(&nodes);
+                        XmlNode::Attribute {
+                            name: name_clone.clone(),
+                            value: text,
+                        }
+                    });
+                }
+                Mark::Promoted => {
+                    // Promoted: pass through without wrapper
+                    forest.action(&production, |mut nodes| {
+                        if nodes.len() == 1 {
+                            nodes.pop().unwrap()
+                        } else {
+                            XmlNode::Element {
+                                name: "_promoted".to_string(),
+                                attributes: vec![],
+                                children: nodes,
+                            }
+                        }
+                    });
+                }
+                Mark::None => {}
+            }
+        }
+    }
+
+    // Check if this factor is a marked character class
+    if let BaseFactor::CharClass { content, negated, mark } = &factor.base {
+        if *mark != Mark::None {
+            // Get the base symbol name
+            let base = if *negated {
+                format!("charclass_neg_{}", normalize_charclass_content(content))
+            } else {
+                format!("charclass_{}", normalize_charclass_content(content))
+            };
+
+            let marked_name = format!("{}_{}", base, mark_suffix(*mark));
+            let production = format!("{} -> {}", marked_name, base);
+
+            // Optionally log registration for diagnostics
+            if std::env::var("RUSTIXML_DEBUG_REGISTRATION").is_ok() {
+                eprintln!("[reg] registering production: {}", production);
+            }
+
+            // Register action based on mark type
+            match mark {
+                Mark::Hidden => {
+                    // Hidden: don't include in output
+                    forest.action(&production, |_nodes| {
+                        XmlNode::Element {
+                            name: "_hidden".to_string(),
+                            attributes: vec![],
+                            children: vec![],
+                        }
+                    });
+                }
+                Mark::Attribute => {
+                    // Attribute: extract text and create attribute node
+                    let name_clone = marked_name.clone();
+                    forest.action(&production, move |nodes| {
+                        let text = extract_text_from_nodes(&nodes);
+                        XmlNode::Attribute {
+                            name: name_clone.clone(),
+                            value: text,
+                        }
+                    });
+                }
+                Mark::Promoted => {
+                    // Promoted: pass through without wrapper
+                    forest.action(&production, |mut nodes| {
+                        if nodes.len() == 1 {
+                            nodes.pop().unwrap()
+                        } else {
+                            XmlNode::Element {
+                                name: "_promoted".to_string(),
+                                attributes: vec![],
+                                children: nodes,
+                            }
+                        }
+                    });
+                }
+                Mark::None => {}
+            }
+        }
+    }
+
+    // Recurse into groups
+    if let BaseFactor::Group { alternatives } = &factor.base {
+        register_marked_literal_from_alternatives(forest, alternatives);
+    }
+
+    // Also process separator sequences in repetition operators
+    match &factor.repetition {
+        Repetition::SeparatedZeroOrMore(sep) | Repetition::SeparatedOneOrMore(sep) => {
+            for sep_factor in &sep.factors {
+                register_marked_literal_from_factor(forest, sep_factor);
+            }
+        }
+        _ => {}, // Other repetitions don't have separators
     }
 }
 
@@ -2379,10 +2712,22 @@ fn get_factor_symbol(factor: &Factor) -> (String, String) {
                 base
             }
         }
-        BaseFactor::Group { .. } => {
-            // Use the global counter to match convert_factor
-            let group_id = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
-            format!("group_{}", group_id)
+        BaseFactor::Group { alternatives } => {
+            // Look up the group ID from the mapping created during conversion
+            let group_key = alternatives.as_ref() as *const Alternatives as usize;
+            let group_id = GROUP_ID_MAP.with(|map| {
+                map.borrow().get(&group_key).copied()
+            });
+            
+            match group_id {
+                Some(id) => format!("group_{}", id),
+                None => {
+                    // Fallback: if not in map, use a new ID (shouldn't happen in normal flow)
+                    eprintln!("Warning: Group not found in mapping, using fallback ID");
+                    let id = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
+                    format!("group_{}", id)
+                }
+            }
         }
     };
 
@@ -2549,7 +2894,11 @@ fn register_repetition_actions(
                 let sep_symbols = build_symbol_list_for_sequence(&sep, &mut group_counter);
 
                 // Register base case: base_sep_plus -> base
-                forest.action(&format!("{} -> {}", plus_name, base_name), |nodes| {
+                let sep_base_prod = format!("{} -> {}", plus_name, base_name);
+                if std::env::var("RUSTIXML_DEBUG_REGISTRATION").is_ok() {
+                    eprintln!("[reg] registering production: {}", sep_base_prod);
+                }
+                forest.action(&sep_base_prod, |nodes| {
                     XmlNode::Element { name: "_repeat_container".to_string(), attributes: vec![], children: nodes }
                 });
 
@@ -2561,6 +2910,9 @@ fn register_repetition_actions(
                 recursive_pattern.push_str(&format!(" {}", base_name));
 
                 let sep_len = sep_symbols.len(); // Store the length to avoid capturing vec
+                if std::env::var("RUSTIXML_DEBUG_REGISTRATION").is_ok() {
+                    eprintln!("[reg] registering production: {}", recursive_pattern);
+                }
                 forest.action(&recursive_pattern, move |mut nodes| {
                     // Extract left (recursive result), separators (include them!), and right (base)
                     if nodes.is_empty() {
@@ -2721,7 +3073,7 @@ mod tests {
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
         // Convert to Earlgrey
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("choice").expect("Failed to build grammar");
 
         // Create parser
@@ -2749,7 +3101,7 @@ mod tests {
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
         // Convert to Earlgrey
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("greeting").expect("Failed to build grammar");
 
         // Create parser
@@ -2778,7 +3130,7 @@ mod tests {
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
         // Step 3: Convert AST to Earlgrey grammar
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("word").expect("Failed to build grammar");
 
         // Step 4: Create parser for the target language
@@ -2798,7 +3150,7 @@ mod tests {
 
         let ixml = r#"greeting: "hello"."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("greeting").expect("Failed to build grammar");
         let parser = EarleyParser::new(grammar);
 
@@ -2825,7 +3177,7 @@ mod tests {
 
         let ixml = r#"greeting: "hello"."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("greeting").expect("Failed to build grammar");
         let parser = EarleyParser::new(grammar);
 
@@ -2867,7 +3219,7 @@ mod tests {
         "#;
 
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("element").expect("Failed to build grammar");
         let parser = EarleyParser::new(grammar);
 
@@ -2905,7 +3257,7 @@ mod tests {
         "#;
 
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("sentence").expect("Failed to build grammar");
         let parser = EarleyParser::new(grammar);
 
@@ -2944,7 +3296,7 @@ mod tests {
         "#;
 
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("container").expect("Failed to build grammar");
         let parser = EarleyParser::new(grammar);
 
@@ -2978,7 +3330,7 @@ mod tests {
         let ixml = r#"letter: ['a'-'z']."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("letter").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);
@@ -3004,7 +3356,7 @@ mod tests {
         let ixml = r#"vowel: ['a', 'e', 'i', 'o', 'u']."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("vowel").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);
@@ -3030,7 +3382,7 @@ mod tests {
         let ixml = r#"nondigit: ~['0'-'9']."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("nondigit").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);
@@ -3058,7 +3410,7 @@ mod tests {
         let ixml = r#"letter: [L]."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("letter").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);
@@ -3084,7 +3436,7 @@ mod tests {
         let ixml = r#"word: ['a'-'z']+."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("word").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);
@@ -3124,7 +3476,7 @@ mod tests {
         let ixml = r#"digit: ['0'-'9']."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("digit").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);
@@ -3157,7 +3509,7 @@ mod tests {
         let ixml = r#"choice: ("a" | "b")."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("choice").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);
@@ -3187,7 +3539,7 @@ mod tests {
         let ixml = r#"word: ("a" | "b")+."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("word").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);
@@ -3217,7 +3569,7 @@ mod tests {
         let ixml = r#"greeting: ("hello" | "world")."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("greeting").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);
@@ -3247,7 +3599,7 @@ mod tests {
         let ixml = r#"choice: ("a" | "b")."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("choice").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);
@@ -3281,7 +3633,7 @@ mod tests {
         let ixml = r#"choice: (("a" | "b") | "c")."#;
         let ast = parse_ixml_grammar(ixml).expect("Failed to parse iXML grammar");
 
-        let builder = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
+        let (builder, _transformed_ast) = ast_to_earlgrey(&ast).expect("Failed to convert to Earlgrey");
         let grammar = builder.into_grammar("choice").expect("Failed to build grammar");
 
         let parser = EarleyParser::new(grammar);

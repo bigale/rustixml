@@ -2,11 +2,11 @@ use rustixml::testsuite_utils::{read_simple_test, run_test, TestOutcome};
 
 fn main() {
     let test_dir = "/home/bigale/repos/ixml/tests/correct";
-    let test_name = "xpath";
+    let test_name = "unicode-classes";
 
     match read_simple_test(test_dir, test_name) {
         Ok(test) => {
-            println!("Grammar length: {} chars", test.grammar.len());
+            println!("Grammar:\n{}", test.grammar);
             println!("\nInput: {:?}", test.input);
             println!("Input chars: {:?}", test.input.chars().collect::<Vec<_>>());
 
