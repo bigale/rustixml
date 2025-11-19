@@ -7,7 +7,7 @@
 use crate::ast::{Alternatives, BaseFactor, Factor, IxmlGrammar, Mark, Repetition, Rule, Sequence};
 use crate::input_stream::InputStream;
 use crate::parse_context::{ParseContext, ParseError, ParseResult};
-use crate::runtime_parser::XmlNode;
+use crate::runtime_parser::{charclass_to_rangeset, XmlNode};
 use std::collections::HashMap;
 
 /// Native iXML parser that interprets grammar ASTs directly
@@ -90,28 +90,41 @@ impl NativeParser {
 
     /// Apply rule-level mark to parse result
     fn apply_rule_mark(&self, mut result: ParseResult, rule: &Rule) -> ParseResult {
-        result.node = result.node.map(|node| match rule.mark {
-            Mark::Hidden => return None,
+        match rule.mark {
+            Mark::Hidden => {
+                // Hide entire element
+                result.node = None;
+            }
             Mark::Attribute => {
                 // Convert to attribute
-                Some(XmlNode::Attribute {
+                let text = result.node.map(|n| n.text_content()).unwrap_or_default();
+                result.node = Some(XmlNode::Attribute {
                     name: rule.name.clone(),
-                    value: node.text_content(),
-                })
+                    value: text,
+                });
             }
             Mark::Promoted => {
-                // Promote content (unwrap element)
-                Some(node)
+                // Keep node as-is (promoted)
+                // Node is already unwrapped
             }
             Mark::None => {
                 // Wrap in element
-                Some(XmlNode::Element {
+                // If the node is a _sequence wrapper, unwrap it and use its children
+                let children = match result.node {
+                    Some(XmlNode::Element { name, children, .. }) if name == "_sequence" => {
+                        // Unwrap sequence and use its children directly
+                        children
+                    }
+                    Some(node) => vec![node],
+                    None => vec![], // Empty element
+                };
+                result.node = Some(XmlNode::Element {
                     name: rule.name.clone(),
                     attributes: vec![],
-                    children: vec![node],
-                })
+                    children,
+                });
             }
-        }).flatten();
+        }
 
         result
     }
@@ -239,45 +252,143 @@ impl NativeParser {
     fn parse_terminal(
         &self,
         stream: &mut InputStream,
-        _value: &str,
-        _mark: Mark,
-        _insertion: bool,
+        value: &str,
+        mark: Mark,
+        insertion: bool,
     ) -> Result<ParseResult, ParseError> {
-        // TODO: Implement in Phase 2
-        Err(ParseError::Custom {
-            message: "Terminals not yet implemented".to_string(),
-            position: stream.position(),
-        })
+        let start_pos = stream.position();
+        
+        // Handle insertion: always succeeds, consumes no input
+        if insertion {
+            let node = match mark {
+                Mark::Hidden => None,
+                _ => Some(XmlNode::Text(value.to_string())),
+            };
+            return Ok(ParseResult::new(node, 0));
+        }
+
+        // Match literal string character by character
+        let value_chars: Vec<char> = value.chars().collect();
+        for expected_ch in &value_chars {
+            match stream.current() {
+                Some(actual_ch) if actual_ch == *expected_ch => {
+                    stream.advance();
+                }
+                Some(actual_ch) => {
+                    // Mismatch - restore position and fail
+                    stream.set_position(start_pos);
+                    return Err(ParseError::TerminalMismatch {
+                        expected: value.to_string(),
+                        actual: actual_ch.to_string(),
+                        position: start_pos,
+                    });
+                }
+                None => {
+                    // Unexpected EOF
+                    stream.set_position(start_pos);
+                    return Err(ParseError::UnexpectedEof {
+                        expected: value.to_string(),
+                        position: start_pos,
+                    });
+                }
+            }
+        }
+
+        // Success - create node based on mark
+        let consumed = value_chars.len();
+        let node = match mark {
+            Mark::Hidden => None,
+            _ => Some(XmlNode::Text(value.to_string())),
+        };
+
+        Ok(ParseResult::new(node, consumed))
     }
 
     /// Parse a character class
     fn parse_charclass(
         &self,
         stream: &mut InputStream,
-        _content: &str,
-        _negated: bool,
-        _mark: Mark,
+        content: &str,
+        negated: bool,
+        mark: Mark,
     ) -> Result<ParseResult, ParseError> {
-        // TODO: Implement in Phase 2
-        Err(ParseError::Custom {
-            message: "Character classes not yet implemented".to_string(),
-            position: stream.position(),
-        })
+        let start_pos = stream.position();
+
+        // Get current character
+        let ch = match stream.current() {
+            Some(c) => c,
+            None => {
+                return Err(ParseError::UnexpectedEof {
+                    expected: format!("character matching class [{}{}]", if negated { "^" } else { "" }, content),
+                    position: start_pos,
+                });
+            }
+        };
+
+        // Convert character class to RangeSet and check if character matches
+        let rangeset = charclass_to_rangeset(content);
+        let matches = rangeset.contains(ch);
+        let actual_match = if negated { !matches } else { matches };
+
+        if !actual_match {
+            return Err(ParseError::CharClassMismatch {
+                charclass: content.to_string(),
+                negated,
+                actual: ch,
+                position: start_pos,
+            });
+        }
+
+        // Success - consume character and create node
+        stream.advance();
+        let node = match mark {
+            Mark::Hidden => None,
+            _ => Some(XmlNode::Text(ch.to_string())),
+        };
+
+        Ok(ParseResult::new(node, 1))
     }
 
     /// Parse a nonterminal (rule reference)
     fn parse_nonterminal(
         &self,
         stream: &mut InputStream,
-        _name: &str,
-        _mark: Mark,
-        _ctx: &mut ParseContext,
+        name: &str,
+        mark: Mark,
+        ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
-        // TODO: Implement in Phase 2
-        Err(ParseError::Custom {
-            message: "Nonterminals not yet implemented".to_string(),
-            position: stream.position(),
-        })
+        let start_pos = stream.position();
+
+        // Look up the rule
+        let rule = self.rules.get(name).ok_or_else(|| ParseError::Custom {
+            message: format!("Undefined rule: {}", name),
+            position: start_pos,
+        })?;
+
+        // Parse the rule
+        let result = self.parse_rule(stream, rule, ctx)?;
+
+        // Apply factor-level mark to the result
+        let node = result.node.map(|n| match mark {
+            Mark::Hidden => return None,
+            Mark::Attribute => {
+                // Convert to attribute
+                Some(XmlNode::Attribute {
+                    name: name.to_string(),
+                    value: n.text_content(),
+                })
+            }
+            Mark::Promoted => {
+                // Promote content (unwrap)
+                Some(n)
+            }
+            Mark::None => {
+                // Keep as-is (already wrapped by rule-level mark)
+                Some(n)
+            }
+        }).flatten();
+
+        Ok(ParseResult::new(node, result.consumed))
     }
 }
 
@@ -305,5 +416,82 @@ mod tests {
         let result = parser.parse("anything");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("no rules"));
+    }
+
+    #[test]
+    fn test_simple_terminal() {
+        use crate::grammar_ast::parse_ixml_grammar;
+
+        let grammar_text = "test: 'hello'.";
+        let grammar = parse_ixml_grammar(grammar_text).expect("Grammar should parse");
+        let parser = NativeParser::new(grammar);
+
+        // Should match "hello"
+        let result = parser.parse("hello");
+        assert!(result.is_ok(), "Parse should succeed: {:?}", result);
+        let xml = result.unwrap();
+        println!("XML output: {}", xml);
+        assert!(xml.contains("<test>"));
+        assert!(xml.contains("hello"));
+    }
+
+    #[test]
+    fn test_terminal_mismatch() {
+        use crate::grammar_ast::parse_ixml_grammar;
+
+        let grammar_text = "test: 'hello'.";
+        let grammar = parse_ixml_grammar(grammar_text).expect("Grammar should parse");
+        let parser = NativeParser::new(grammar);
+
+        // Should fail on "world"
+        let result = parser.parse("world");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        println!("Error: {}", err);
+        assert!(err.contains("No alternative matched") || err.contains("expected") || err.contains("hello"));
+    }
+
+    #[test]
+    fn test_simple_charclass() {
+        use crate::grammar_ast::parse_ixml_grammar;
+
+        let grammar_text = "digit: ['0'-'9'].";
+        let grammar = parse_ixml_grammar(grammar_text).expect("Grammar should parse");
+        let parser = NativeParser::new(grammar);
+
+        // Should match any digit
+        for digit in '0'..='9' {
+            let input = digit.to_string();
+            let result = parser.parse(&input);
+            assert!(result.is_ok(), "Should match digit {}: {:?}", digit, result);
+            let xml = result.unwrap();
+            assert!(xml.contains(&digit.to_string()));
+        }
+
+        // Should fail on non-digit
+        let result = parser.parse("a");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nonterminal_reference() {
+        use crate::grammar_ast::parse_ixml_grammar;
+
+        let grammar_text = r#"
+            test: greeting.
+            greeting: 'hello'.
+        "#;
+        let grammar = parse_ixml_grammar(grammar_text).expect("Grammar should parse");
+        let parser = NativeParser::new(grammar);
+
+        let result = parser.parse("hello");
+        assert!(result.is_ok(), "Parse should succeed: {:?}", result);
+        let xml = result.unwrap();
+        println!("XML output: {}", xml);
+        // Remove whitespace for simpler matching
+        let normalized = xml.split_whitespace().collect::<Vec<_>>().join("");
+        assert!(normalized.contains("<test>"));
+        assert!(normalized.contains("<greeting>"));
+        assert!(normalized.contains("hello"));
     }
 }

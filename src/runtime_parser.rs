@@ -383,7 +383,7 @@ pub fn unicode_category_to_rangeset(category_name: &str) -> Option<RangeSet> {
 
 /// Parse a character class content string into a RangeSet
 /// This handles the same formats as parse_char_class but returns a RangeSet
-fn charclass_to_rangeset(content: &str) -> RangeSet {
+pub fn charclass_to_rangeset(content: &str) -> RangeSet {
     let mut result = RangeSet::new();
 
     // Split while respecting quoted strings
