@@ -92,8 +92,10 @@ impl NativeParser {
     fn apply_rule_mark(&self, mut result: ParseResult, rule: &Rule) -> ParseResult {
         match rule.mark {
             Mark::Hidden => {
-                // Hide entire element
-                result.node = None;
+                // Don't wrap in element - pass through content as-is
+                // This is different from factor-level hiding which suppresses output
+                // Rule-level hiding just means "don't create wrapper element"
+                // Content is already in result.node, so just return it
             }
             Mark::Attribute => {
                 // Convert to attribute
