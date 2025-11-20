@@ -11,12 +11,19 @@
         window.htmzUpdate = function(iframe) {
             try {
                 const targetId = iframe.src.split('#')[1];
+                console.log('🔄 htmzUpdate called, targetId:', targetId, 'src:', iframe.src.substring(0, 100));
                 if (targetId && iframe.contentDocument) {
                     const content = iframe.contentDocument.body.innerHTML;
+                    console.log('📝 Content to inject:', content.substring(0, 100) + '...');
                     const target = document.getElementById(targetId);
                     if (target) {
                         target.innerHTML = content;
+                        console.log('✅ Content injected into #' + targetId);
+                    } else {
+                        console.error('❌ Target element not found:', targetId);
                     }
+                } else {
+                    console.log('⏭️ Skipping update (no targetId or contentDocument)');
                 }
             } catch (e) {
                 console.error('htmz update failed:', e);
@@ -349,19 +356,19 @@
             <div class="examples">
                 <h4 style="width: 100%; margin-bottom: 10px;">📚 Load Examples:</h4>
                 <!-- WASMZ: Forms calling WASM functions directly -->
-                <form action="wasm://load_example_template" target="htmz" method="post">
+                <form action="wasm://load_example_template" target="htmz" method="post" data-target="example-display">
                     <input type="hidden" name="example_name" value="simple">
                     <button type="submit" class="example-btn">Simple Words</button>
                 </form>
-                <form action="wasm://load_example_template" target="htmz" method="post">
+                <form action="wasm://load_example_template" target="htmz" method="post" data-target="example-display">
                     <input type="hidden" name="example_name" value="arithmetic">
                     <button type="submit" class="example-btn">Arithmetic</button>
                 </form>
-                <form action="wasm://load_example_template" target="htmz" method="post">
+                <form action="wasm://load_example_template" target="htmz" method="post" data-target="example-display">
                     <input type="hidden" name="example_name" value="date">
                     <button type="submit" class="example-btn">Date Parser</button>
                 </form>
-                <form action="wasm://load_example_template" target="htmz" method="post">
+                <form action="wasm://load_example_template" target="htmz" method="post" data-target="example-display">
                     <input type="hidden" name="example_name" value="greeting">
                     <button type="submit" class="example-btn">Greeting</button>
                 </form>
@@ -390,7 +397,7 @@ letter: ["A"-"Z"; "a"-"z"].</textarea>
 
             <div class="controls">
                 <!-- WASMZ: Form calling WASM function to parse -->
-                <form action="wasm://parse_ixml_template" target="htmz" method="post" style="display: inline;">
+                <form action="wasm://parse_ixml_template" target="htmz" method="post" data-target="result" style="display: inline;">
                     <input type="hidden" name="grammar" id="form_grammar">
                     <input type="hidden" name="input" id="form_input">
                     <button type="submit" onclick="copyTextareas()">⚡ Parse with WASM</button>
@@ -495,6 +502,8 @@ letter: ["A"-"Z"; "a"-"z"].</textarea>
                         html = wasmFunction(...Object.values(params));
                     }
                     
+                    console.log('✨ WASM returned HTML:', html.substring(0, 100) + '...');
+                    
                     // Determine target element
                     const target = form.getAttribute('target');
                     let targetElement;
@@ -509,6 +518,8 @@ letter: ["A"-"Z"; "a"-"z"].</textarea>
                         
                         // Find target from form's nearest ancestor with fragment or default
                         const targetId = findTargetId(form);
+                        console.log('📍 Target ID:', targetId);
+                        console.log('📦 Setting iframe src to:', dataUrl.substring(0, 100) + '...#' + targetId);
                         document.querySelector('iframe[name="htmz"]').src = dataUrl + '#' + targetId;
                     } else {
                         // Direct injection (non-htmz pattern)
