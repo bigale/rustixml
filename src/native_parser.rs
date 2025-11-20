@@ -123,6 +123,9 @@ impl NativeParser {
                     None => vec![], // Empty element
                 };
                 
+                // Recursively flatten any nested _sequence elements
+                children = self.flatten_sequences(children);
+                
                 // Extract attributes from children
                 let (attributes, non_attrs): (Vec<_>, Vec<_>) = 
                     children.into_iter().partition(|node| {
@@ -439,8 +442,27 @@ impl NativeParser {
         Ok(ParseResult::new(node, result.consumed))
     }
 
+    /// Recursively flatten nested _sequence elements
+    fn flatten_sequences(&self, children: Vec<XmlNode>) -> Vec<XmlNode> {
+        let mut flattened = Vec::new();
+        
+        for node in children {
+            match node {
+                XmlNode::Element { name, children, .. } if name == "_sequence" => {
+                    // Recursively flatten and add children
+                    flattened.extend(self.flatten_sequences(children));
+                }
+                other => {
+                    flattened.push(other);
+                }
+            }
+        }
+        
+        flattened
+    }
+
     /// Merge consecutive Text nodes and return an appropriate node
-    fn merge_nodes(&self, mut children: Vec<XmlNode>) -> Option<XmlNode> {
+    fn merge_nodes(&self, children: Vec<XmlNode>) -> Option<XmlNode> {
         if children.is_empty() {
             return None;
         }
