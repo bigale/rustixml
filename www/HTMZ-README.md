@@ -42,20 +42,28 @@ Everything self-contained
 ```
 
 **Features:**
-- ✅ Works completely offline (file:// protocol)
-- ✅ No server setup required
-- ✅ Double-click to open
-- ✅ Can be emailed as single file (with pkg/)
+- ✅ Works with minimal HTTP server
+- ✅ No backend setup required
+- ✅ Can be distributed as single file (with pkg/)
 - ✅ Demonstrates browser-as-server pattern
 - ✅ HTMZ form-driven architecture
+- ⚠️ Note: ES modules require HTTP server due to browser CORS restrictions
 
 **To run:**
 ```bash
-# Option 1: Just double-click the file!
-# Option 2: Or still use a server
+# Requires a simple HTTP server (browser security limitation)
 python3 -m http.server 8080
 # Visit: http://localhost:8080/www/htmz-standalone.html
+
+# Or use any simple server:
+npx serve
+# php -S localhost:8080
+# etc.
 ```
+
+**Why not pure file:// protocol?**
+
+Browsers block ES module imports from `file://` URLs due to CORS security policies. The HTMZ pattern itself works offline, but loading WASM requires a minimal HTTP server. This is a one-line command and doesn't need any backend logic - the browser truly IS the server once loaded.
 
 ## Technical Differences
 

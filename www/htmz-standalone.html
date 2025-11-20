@@ -299,34 +299,22 @@ letter: ["A"-"Z"; "a"-"z"].</textarea>
     <!-- HTMZ iframe for form handling -->
     <iframe name="htmz" onload="htmzUpdate(this)"></iframe>
 
-    <script type="module">
-        // Import WASM module from relative path
-        // Note: This requires the pkg/ directory to be in the same location
-        import init, { parse_ixml } from '../pkg/rustixml.js';
-
-        // Initialize WASM
-        let wasmReady = false;
-        
-        async function initWasm() {
+    <script>
+        // Define HTMZ handler BEFORE the module script so it's available immediately
+        window.htmzUpdate = function(iframe) {
             try {
-                await init();
-                wasmReady = true;
-                console.log('✅ WASM initialized - Ready for offline parsing!');
-                document.getElementById('output-display').textContent = 
-                    '✅ WASM loaded! Ready to parse. Click "Parse" button.';
-            } catch (err) {
-                console.error('Failed to initialize WASM:', err);
-                document.getElementById('output-display').innerHTML = 
-                    `<span class="error">⚠️ WASM initialization failed. Make sure pkg/ directory is present.\n\nError: ${err.message}</span>`;
+                const targetId = iframe.src.split('#')[1];
+                if (targetId && iframe.contentDocument) {
+                    const content = iframe.contentDocument.body.innerHTML;
+                    const target = document.getElementById(targetId);
+                    if (target) {
+                        target.innerHTML = content;
+                    }
+                }
+            } catch (e) {
+                console.log('HTMZ update (handled):', e.message);
             }
-        }
-
-        // Store in global scope for HTMZ handlers
-        window.wasmReady = () => wasmReady;
-        window.parseIxml = parse_ixml;
-
-        // Initialize on load
-        initWasm();
+        };
 
         // Example data
         const examples = {
@@ -370,22 +358,6 @@ number: ["0"-"9"]+.`,
             }
         };
 
-        // HTMZ handler - called when iframe loads
-        window.htmzUpdate = function(iframe) {
-            try {
-                const targetId = iframe.src.split('#')[1];
-                if (targetId && iframe.contentDocument) {
-                    const content = iframe.contentDocument.body.innerHTML;
-                    const target = document.getElementById(targetId);
-                    if (target) {
-                        target.innerHTML = content;
-                    }
-                }
-            } catch (e) {
-                console.log('HTMZ update (handled):', e.message);
-            }
-        };
-
         // Load example using HTMZ pattern
         window.loadExample = function(form) {
             const formData = new FormData(form);
@@ -402,7 +374,7 @@ number: ["0"-"9"]+.`,
 
         // Parse input using HTMZ pattern
         window.parseInput = function(form) {
-            if (!wasmReady) {
+            if (!window.wasmReady || !window.wasmReady()) {
                 document.getElementById('output-display').innerHTML = 
                     '<span class="error">⚠️ WASM not ready yet. Please wait...</span>';
                 return false;
@@ -452,6 +424,37 @@ number: ["0"-"9"]+.`,
             div.textContent = text;
             return div.innerHTML;
         };
+    </script>
+
+    <script type="module">
+        // Import WASM module
+        // Note: This won't work with file:// protocol due to CORS
+        // Use a local server instead: python3 -m http.server 8080
+        import init, { parse_ixml } from '../pkg/rustixml.js';
+
+        // Initialize WASM
+        let wasmReady = false;
+        
+        async function initWasm() {
+            try {
+                await init();
+                wasmReady = true;
+                console.log('✅ WASM initialized - Ready for offline parsing!');
+                document.getElementById('output-display').textContent = 
+                    '✅ WASM loaded! Ready to parse. Click "Parse" button.';
+            } catch (err) {
+                console.error('Failed to initialize WASM:', err);
+                document.getElementById('output-display').innerHTML = 
+                    `<span class="error">⚠️ WASM initialization failed. Make sure pkg/ directory is present.\n\nError: ${err.message}</span>`;
+            }
+        }
+
+        // Store in global scope for HTMZ handlers
+        window.wasmReady = () => wasmReady;
+        window.parseIxml = parse_ixml;
+
+        // Initialize on load
+        initWasm();
     </script>
 </body>
 </html>
