@@ -674,6 +674,11 @@ impl NativeParser {
             // Try to match separator
             match self.parse_sequence(stream, separator, ctx) {
                 Ok(sep_result) => {
+                    // Collect separator node (may be attribute)
+                    if let Some(node) = sep_result.node {
+                        children.push(node);
+                    }
+                    
                     // Separator matched, now try element
                     match self.parse_base_factor(stream, base, ctx) {
                         Ok(elem_result) => {
@@ -741,6 +746,11 @@ impl NativeParser {
             // Try to match separator
             match self.parse_sequence(stream, separator, ctx) {
                 Ok(sep_result) => {
+                    // Collect separator node (may be attribute)
+                    if let Some(node) = sep_result.node {
+                        children.push(node);
+                    }
+                    
                     // Separator matched, now try element
                     match self.parse_base_factor(stream, base, ctx) {
                         Ok(elem_result) => {
