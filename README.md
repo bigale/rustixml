@@ -113,6 +113,12 @@ python3 -m http.server 8080
 # Open http://localhost:8080/www/ in your browser
 ```
 
+**Two demo versions available:**
+- `www/index.html` - Standard demo (recommended for most users)
+- `www/htmz-standalone.html` - HTMZ pattern demo (works completely offline!)
+
+See [www/HTMZ-README.md](www/HTMZ-README.md) for details on the HTMZ standalone version.
+
 ## 📖 What is Invisible XML?
 
 Invisible XML (iXML) is a specification for describing text formats as grammars and automatically converting text that matches those grammars into XML. It's like regular expressions on steroids!
