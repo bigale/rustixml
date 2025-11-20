@@ -2,14 +2,19 @@
 //!
 //! This module provides functionality for parsing and matching iXML character classes.
 
-use std::collections::{HashMap, BTreeSet};
+use std::collections::HashMap;
 use unicode_general_category::{get_general_category, GeneralCategory};
-use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RangeSet {
     /// Sorted, non-overlapping ranges stored as (start, end) inclusive
     ranges: Vec<(char, char)>,
+}
+
+impl Default for RangeSet {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RangeSet {
@@ -20,13 +25,17 @@ impl RangeSet {
 
     /// Create a RangeSet from a single character
     pub fn from_char(ch: char) -> Self {
-        RangeSet { ranges: vec![(ch, ch)] }
+        RangeSet {
+            ranges: vec![(ch, ch)],
+        }
     }
 
     /// Create a RangeSet from a range
     pub fn from_range(start: char, end: char) -> Self {
         if start <= end {
-            RangeSet { ranges: vec![(start, end)] }
+            RangeSet {
+                ranges: vec![(start, end)],
+            }
         } else {
             RangeSet::new()
         }
@@ -115,7 +124,8 @@ impl RangeSet {
                     // Overlap exists, split the range
                     if start < sub_start {
                         // Keep part before subtraction
-                        new_ranges.push((start, char::from_u32(sub_start as u32 - 1).unwrap_or(start)));
+                        new_ranges
+                            .push((start, char::from_u32(sub_start as u32 - 1).unwrap_or(start)));
                     }
                     if end > sub_end {
                         // Keep part after subtraction
@@ -220,13 +230,13 @@ fn split_charclass_content(content: &str) -> Vec<String> {
 /// This function is cached internally to avoid recomputing expensive ranges.
 pub fn unicode_category_to_rangeset(category_name: &str) -> Option<RangeSet> {
     use std::sync::{Mutex, OnceLock};
-    
+
     // Cache for Unicode category rangesets
     static UNICODE_CACHE: OnceLock<Mutex<HashMap<String, RangeSet>>> = OnceLock::new();
-    
+
     // Get or initialize the cache
     let cache = UNICODE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    
+
     // Check if we have it cached
     {
         let cache_lock = cache.lock().unwrap();
@@ -234,20 +244,44 @@ pub fn unicode_category_to_rangeset(category_name: &str) -> Option<RangeSet> {
             return Some(rangeset.clone());
         }
     }
-    
+
     // Not cached, compute it
     let mut result = RangeSet::new();
 
     // Check if this is a valid Unicode category name
     let is_major = matches!(category_name, "L" | "M" | "N" | "P" | "S" | "Z" | "C");
-    let is_minor = matches!(category_name,
-        "Lu" | "Ll" | "Lt" | "Lm" | "Lo" | "LC" |
-        "Mn" | "Mc" | "Me" |
-        "Nd" | "Nl" | "No" |
-        "Pc" | "Pd" | "Ps" | "Pe" | "Pi" | "Pf" | "Po" |
-        "Sm" | "Sc" | "Sk" | "So" |
-        "Zs" | "Zl" | "Zp" |
-        "Cc" | "Cf" | "Cs" | "Co" | "Cn"
+    let is_minor = matches!(
+        category_name,
+        "Lu" | "Ll"
+            | "Lt"
+            | "Lm"
+            | "Lo"
+            | "LC"
+            | "Mn"
+            | "Mc"
+            | "Me"
+            | "Nd"
+            | "Nl"
+            | "No"
+            | "Pc"
+            | "Pd"
+            | "Ps"
+            | "Pe"
+            | "Pi"
+            | "Pf"
+            | "Po"
+            | "Sm"
+            | "Sc"
+            | "Sk"
+            | "So"
+            | "Zs"
+            | "Zl"
+            | "Zp"
+            | "Cc"
+            | "Cf"
+            | "Cs"
+            | "Co"
+            | "Cn"
     );
 
     if !is_major && !is_minor {
@@ -258,47 +292,63 @@ pub fn unicode_category_to_rangeset(category_name: &str) -> Option<RangeSet> {
     let matches_category = |cat: GeneralCategory, name: &str| -> bool {
         match name {
             // Major categories
-            "L" => matches!(cat,
-                GeneralCategory::UppercaseLetter |
-                GeneralCategory::LowercaseLetter |
-                GeneralCategory::TitlecaseLetter |
-                GeneralCategory::ModifierLetter |
-                GeneralCategory::OtherLetter),
-            "LC" => matches!(cat,
-                GeneralCategory::UppercaseLetter |
-                GeneralCategory::LowercaseLetter |
-                GeneralCategory::TitlecaseLetter),
-            "M" => matches!(cat,
-                GeneralCategory::NonspacingMark |
-                GeneralCategory::SpacingMark |
-                GeneralCategory::EnclosingMark),
-            "N" => matches!(cat,
-                GeneralCategory::DecimalNumber |
-                GeneralCategory::LetterNumber |
-                GeneralCategory::OtherNumber),
-            "P" => matches!(cat,
-                GeneralCategory::ConnectorPunctuation |
-                GeneralCategory::DashPunctuation |
-                GeneralCategory::OpenPunctuation |
-                GeneralCategory::ClosePunctuation |
-                GeneralCategory::InitialPunctuation |
-                GeneralCategory::FinalPunctuation |
-                GeneralCategory::OtherPunctuation),
-            "S" => matches!(cat,
-                GeneralCategory::MathSymbol |
-                GeneralCategory::CurrencySymbol |
-                GeneralCategory::ModifierSymbol |
-                GeneralCategory::OtherSymbol),
-            "Z" => matches!(cat,
-                GeneralCategory::SpaceSeparator |
-                GeneralCategory::LineSeparator |
-                GeneralCategory::ParagraphSeparator),
-            "C" => matches!(cat,
-                GeneralCategory::Control |
-                GeneralCategory::Format |
-                GeneralCategory::Surrogate |
-                GeneralCategory::PrivateUse |
-                GeneralCategory::Unassigned),
+            "L" => matches!(
+                cat,
+                GeneralCategory::UppercaseLetter
+                    | GeneralCategory::LowercaseLetter
+                    | GeneralCategory::TitlecaseLetter
+                    | GeneralCategory::ModifierLetter
+                    | GeneralCategory::OtherLetter
+            ),
+            "LC" => matches!(
+                cat,
+                GeneralCategory::UppercaseLetter
+                    | GeneralCategory::LowercaseLetter
+                    | GeneralCategory::TitlecaseLetter
+            ),
+            "M" => matches!(
+                cat,
+                GeneralCategory::NonspacingMark
+                    | GeneralCategory::SpacingMark
+                    | GeneralCategory::EnclosingMark
+            ),
+            "N" => matches!(
+                cat,
+                GeneralCategory::DecimalNumber
+                    | GeneralCategory::LetterNumber
+                    | GeneralCategory::OtherNumber
+            ),
+            "P" => matches!(
+                cat,
+                GeneralCategory::ConnectorPunctuation
+                    | GeneralCategory::DashPunctuation
+                    | GeneralCategory::OpenPunctuation
+                    | GeneralCategory::ClosePunctuation
+                    | GeneralCategory::InitialPunctuation
+                    | GeneralCategory::FinalPunctuation
+                    | GeneralCategory::OtherPunctuation
+            ),
+            "S" => matches!(
+                cat,
+                GeneralCategory::MathSymbol
+                    | GeneralCategory::CurrencySymbol
+                    | GeneralCategory::ModifierSymbol
+                    | GeneralCategory::OtherSymbol
+            ),
+            "Z" => matches!(
+                cat,
+                GeneralCategory::SpaceSeparator
+                    | GeneralCategory::LineSeparator
+                    | GeneralCategory::ParagraphSeparator
+            ),
+            "C" => matches!(
+                cat,
+                GeneralCategory::Control
+                    | GeneralCategory::Format
+                    | GeneralCategory::Surrogate
+                    | GeneralCategory::PrivateUse
+                    | GeneralCategory::Unassigned
+            ),
             // Minor categories
             "Lu" => cat == GeneralCategory::UppercaseLetter,
             "Ll" => cat == GeneralCategory::LowercaseLetter,
@@ -395,7 +445,9 @@ pub fn charclass_to_rangeset(content: &str) -> RangeSet {
 
                 if end_part.starts_with('#') {
                     // Hex-to-hex range: #30-#39
-                    if let (Some(start), Some(end)) = (parse_hex_char(start_part), parse_hex_char(end_part)) {
+                    if let (Some(start), Some(end)) =
+                        (parse_hex_char(start_part), parse_hex_char(end_part))
+                    {
                         result.add_range(start, end);
                         continue;
                     }
@@ -428,7 +480,11 @@ pub fn charclass_to_rangeset(content: &str) -> RangeSet {
                     if after_dash.starts_with('\'') || after_dash.starts_with('"') {
                         let start_str = &element[1..first_close];
                         let start_char = start_str.chars().next();
-                        let end_quote = if after_dash.starts_with('\'') { '\'' } else { '"' };
+                        let end_quote = if after_dash.starts_with('\'') {
+                            '\''
+                        } else {
+                            '"'
+                        };
                         if let Some(end_close) = after_dash[1..].find(end_quote) {
                             let end_str = &after_dash[1..end_close + 1];
                             let end_char = end_str.chars().next();
@@ -458,8 +514,9 @@ pub fn charclass_to_rangeset(content: &str) -> RangeSet {
             }
         }
         // Single quoted string
-        else if (element.starts_with('\'') && element.ends_with('\'')) ||
-                (element.starts_with('"') && element.ends_with('"')) {
+        else if (element.starts_with('\'') && element.ends_with('\''))
+            || (element.starts_with('"') && element.ends_with('"'))
+        {
             // Only trim the quote character that was actually used
             let inner = if element.starts_with('\'') {
                 element.trim_matches('\'')
@@ -491,4 +548,3 @@ fn parse_hex_char(s: &str) -> Option<char> {
         None
     }
 }
-

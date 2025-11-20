@@ -20,18 +20,16 @@ fn main() {
             println!("Running rustixml tests...");
             println!("Phase 2 implementation in progress.");
         }
-        filename => {
-            match fs::read_to_string(filename) {
-                Ok(content) => {
-                    println!("Parsing grammar from: {}", filename);
-                    println!("Content length: {} bytes", content.len());
-                    println!("\nPhase 2: Full parser implementation coming soon.");
-                }
-                Err(e) => {
-                    eprintln!("Error reading file {}: {}", filename, e);
-                    process::exit(1);
-                }
+        filename => match fs::read_to_string(filename) {
+            Ok(content) => {
+                println!("Parsing grammar from: {}", filename);
+                println!("Content length: {} bytes", content.len());
+                println!("\nPhase 2: Full parser implementation coming soon.");
             }
-        }
+            Err(e) => {
+                eprintln!("Error reading file {}: {}", filename, e);
+                process::exit(1);
+            }
+        },
     }
 }

@@ -5,9 +5,9 @@
 //! It handles insertion and suppression semantics natively.
 
 use crate::ast::{Alternatives, BaseFactor, Factor, IxmlGrammar, Mark, Repetition, Rule, Sequence};
+use crate::charclass::charclass_to_rangeset;
 use crate::input_stream::InputStream;
 use crate::parse_context::{ParseContext, ParseError, ParseResult};
-use crate::charclass::charclass_to_rangeset;
 use crate::xml_node::XmlNode;
 use std::collections::HashMap;
 
@@ -79,7 +79,7 @@ impl NativeParser {
         ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
         let start_pos = stream.position();
-        
+
         // Check for left recursion at this position
         if !ctx.enter_rule(&rule.name, start_pos) {
             return Err(ParseError::LeftRecursion {
@@ -93,7 +93,7 @@ impl NativeParser {
         ctx.exit_rule(&rule.name, start_pos);
 
         // Apply rule-level mark to result
-        result.and_then(|res| Ok(self.apply_rule_mark(res, rule)))
+        result.map(|res| self.apply_rule_mark(res, rule))
     }
 
     /// Apply rule-level mark to parse result
@@ -128,16 +128,15 @@ impl NativeParser {
                     Some(node) => vec![node],
                     None => vec![], // Empty element
                 };
-                
+
                 // Recursively flatten any nested _sequence elements
-                children = self.flatten_sequences(children);
-                
+                children = Self::flatten_sequences(children);
+
                 // Extract attributes from children
-                let (attributes, non_attrs): (Vec<_>, Vec<_>) = 
-                    children.into_iter().partition(|node| {
-                        matches!(node, XmlNode::Attribute { .. })
-                    });
-                
+                let (attributes, non_attrs): (Vec<_>, Vec<_>) = children
+                    .into_iter()
+                    .partition(|node| matches!(node, XmlNode::Attribute { .. }));
+
                 // Convert attribute nodes to (name, value) tuples
                 let attrs: Vec<(String, String)> = attributes
                     .into_iter()
@@ -149,9 +148,9 @@ impl NativeParser {
                         }
                     })
                     .collect();
-                
+
                 children = non_attrs;
-                
+
                 result.node = Some(XmlNode::Element {
                     name: rule.name.clone(),
                     attributes: attrs,
@@ -175,14 +174,14 @@ impl NativeParser {
         let mut attempts = 0;
 
         // Try each alternative and keep the longest match
-        for (_, alt) in alts.alts.iter().enumerate() {
+        for alt in alts.alts.iter() {
             stream.set_position(start_pos); // Reset for each alternative
             attempts += 1;
 
             match self.parse_sequence(stream, alt, ctx) {
                 Ok(result) => {
                     let end_pos = stream.position();
-                    
+
                     // Keep this result if it's the longest match so far
                     match &best_result {
                         None => {
@@ -290,15 +289,19 @@ impl NativeParser {
         ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
         match base {
-            BaseFactor::Literal { value, insertion, mark } => {
-                self.parse_terminal(stream, value, *mark, *insertion)
-            }
+            BaseFactor::Literal {
+                value,
+                insertion,
+                mark,
+            } => self.parse_terminal(stream, value, *mark, *insertion),
             BaseFactor::Nonterminal { name, mark } => {
                 self.parse_nonterminal(stream, name, *mark, ctx)
             }
-            BaseFactor::CharClass { content, negated, mark } => {
-                self.parse_charclass(stream, content, *negated, *mark)
-            }
+            BaseFactor::CharClass {
+                content,
+                negated,
+                mark,
+            } => self.parse_charclass(stream, content, *negated, *mark),
             BaseFactor::Group { alternatives } => {
                 self.parse_alternatives(stream, alternatives, ctx)
             }
@@ -314,7 +317,7 @@ impl NativeParser {
         insertion: bool,
     ) -> Result<ParseResult, ParseError> {
         let start_pos = stream.position();
-        
+
         // Handle insertion: always succeeds, consumes no input
         if insertion {
             let node = match mark {
@@ -376,7 +379,11 @@ impl NativeParser {
             Some(c) => c,
             None => {
                 return Err(ParseError::UnexpectedEof {
-                    expected: format!("character matching class [{}{}]", if negated { "^" } else { "" }, content),
+                    expected: format!(
+                        "character matching class [{}{}]",
+                        if negated { "^" } else { "" },
+                        content
+                    ),
                     position: start_pos,
                 });
             }
@@ -426,39 +433,43 @@ impl NativeParser {
         let result = self.parse_rule(stream, rule, ctx)?;
 
         // Apply factor-level mark to the result
-        let node = result.node.map(|n| match mark {
+        let node = result.node.and_then(|n| match mark {
             Mark::Hidden => {
                 // Factor-level hiding: unwrap element and pass through children + attributes
                 // If the result is an Element, extract its children and attributes
                 match n {
-                    XmlNode::Element { children, attributes, .. } => {
+                    XmlNode::Element {
+                        children,
+                        attributes,
+                        ..
+                    } => {
                         // Pass through both children and attributes
                         // Convert attributes back to Attribute nodes
                         let mut all_nodes = Vec::new();
-                        
+
                         // Add attributes as Attribute nodes
                         for (name, value) in attributes {
                             all_nodes.push(XmlNode::Attribute { name, value });
                         }
-                        
+
                         // Add children
                         all_nodes.extend(children);
-                        
+
                         if all_nodes.is_empty() {
-                            return None;
+                            None
                         } else if all_nodes.len() == 1 {
-                            return Some(all_nodes.into_iter().next().unwrap());
+                            Some(all_nodes.into_iter().next().unwrap())
                         } else {
                             // Multiple items - wrap in _sequence for now
-                            return Some(XmlNode::Element {
+                            Some(XmlNode::Element {
                                 name: "_sequence".to_string(),
                                 attributes: vec![],
                                 children: all_nodes,
-                            });
+                            })
                         }
                     }
                     // For non-Element nodes (Text, Attribute), keep them
-                    other => return Some(other),
+                    other => Some(other),
                 }
             }
             Mark::Attribute => {
@@ -480,10 +491,12 @@ impl NativeParser {
                         // Not wrapped or wrapped in different element - wrap it
                         // First unwrap if it's a _sequence
                         let children = match n {
-                            XmlNode::Element { name, children, .. } if name == "_sequence" => children,
+                            XmlNode::Element { name, children, .. } if name == "_sequence" => {
+                                children
+                            }
                             other => vec![other],
                         };
-                        
+
                         // Wrap in rule element
                         Some(XmlNode::Element {
                             name: rule.name.clone(),
@@ -497,27 +510,27 @@ impl NativeParser {
                 // Keep as-is (already wrapped by rule-level mark)
                 Some(n)
             }
-        }).flatten();
+        });
 
         Ok(ParseResult::new(node, result.consumed))
     }
 
     /// Recursively flatten nested _sequence elements
-    fn flatten_sequences(&self, children: Vec<XmlNode>) -> Vec<XmlNode> {
+    fn flatten_sequences(children: Vec<XmlNode>) -> Vec<XmlNode> {
         let mut flattened = Vec::new();
-        
+
         for node in children {
             match node {
                 XmlNode::Element { name, children, .. } if name == "_sequence" => {
                     // Recursively flatten and add children
-                    flattened.extend(self.flatten_sequences(children));
+                    flattened.extend(Self::flatten_sequences(children));
                 }
                 other => {
                     flattened.push(other);
                 }
             }
         }
-        
+
         flattened
     }
 
@@ -526,11 +539,11 @@ impl NativeParser {
         if children.is_empty() {
             return None;
         }
-        
+
         // Merge consecutive Text nodes
         let mut merged = Vec::new();
         let mut text_buffer = String::new();
-        
+
         for node in children {
             match node {
                 XmlNode::Text(s) => {
@@ -546,12 +559,12 @@ impl NativeParser {
                 }
             }
         }
-        
+
         // Flush remaining text
         if !text_buffer.is_empty() {
             merged.push(XmlNode::Text(text_buffer));
         }
-        
+
         // Return result
         if merged.is_empty() {
             None
@@ -574,14 +587,14 @@ impl NativeParser {
         base: &BaseFactor,
         ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
-        let start_pos = stream.position();
+        let _start_pos = stream.position();
         let mut children = Vec::new();
         let mut total_consumed = 0;
 
         // Keep matching until we fail
         loop {
             let loop_start = stream.position();
-            
+
             // Try to match the base factor
             match self.parse_base_factor(stream, base, ctx) {
                 Ok(result) => {
@@ -594,7 +607,7 @@ impl NativeParser {
                         }
                         break;
                     }
-                    
+
                     // Collect non-suppressed nodes
                     if let Some(node) = result.node {
                         children.push(node);
@@ -620,7 +633,7 @@ impl NativeParser {
         base: &BaseFactor,
         ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
-        let start_pos = stream.position();
+        let _start_pos = stream.position();
 
         // Must match at least once
         let first_result = self.parse_base_factor(stream, base, ctx)?;
@@ -644,7 +657,7 @@ impl NativeParser {
         // Try to match more
         loop {
             let loop_start = stream.position();
-            
+
             match self.parse_base_factor(stream, base, ctx) {
                 Ok(result) => {
                     // Epsilon-match detection
@@ -654,7 +667,7 @@ impl NativeParser {
                         }
                         break;
                     }
-                    
+
                     if let Some(node) = result.node {
                         children.push(node);
                     }
@@ -699,7 +712,7 @@ impl NativeParser {
         separator: &Sequence,
         ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
-        let start_pos = stream.position();
+        let _start_pos = stream.position();
         let mut children = Vec::new();
         let mut total_consumed = 0;
 
@@ -715,8 +728,12 @@ impl NativeParser {
                 // Epsilon-match check
                 if result.consumed == 0 {
                     return Ok(ParseResult::new(
-                        if children.is_empty() { None } else { Some(children.into_iter().next().unwrap()) },
-                        total_consumed
+                        if children.is_empty() {
+                            None
+                        } else {
+                            Some(children.into_iter().next().unwrap())
+                        },
+                        total_consumed,
                     ));
                 }
             }
@@ -738,7 +755,7 @@ impl NativeParser {
                     if let Some(node) = sep_result.node {
                         children.push(node);
                     }
-                    
+
                     // Separator matched, now try element
                     match self.parse_base_factor(stream, base, ctx) {
                         Ok(elem_result) => {
@@ -780,7 +797,7 @@ impl NativeParser {
         separator: &Sequence,
         ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
-        let start_pos = stream.position();
+        let _start_pos = stream.position();
 
         // Must match at least one element
         let first_result = self.parse_base_factor(stream, base, ctx)?;
@@ -794,8 +811,12 @@ impl NativeParser {
         // Epsilon-match check
         if first_result.consumed == 0 {
             return Ok(ParseResult::new(
-                if children.is_empty() { None } else { Some(children.into_iter().next().unwrap()) },
-                total_consumed
+                if children.is_empty() {
+                    None
+                } else {
+                    Some(children.into_iter().next().unwrap())
+                },
+                total_consumed,
             ));
         }
 
@@ -810,7 +831,7 @@ impl NativeParser {
                     if let Some(node) = sep_result.node {
                         children.push(node);
                     }
-                    
+
                     // Separator matched, now try element
                     match self.parse_base_factor(stream, base, ctx) {
                         Ok(elem_result) => {
@@ -901,7 +922,11 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         println!("Error: {}", err);
-        assert!(err.contains("No alternative matched") || err.contains("expected") || err.contains("hello"));
+        assert!(
+            err.contains("No alternative matched")
+                || err.contains("expected")
+                || err.contains("hello")
+        );
     }
 
     #[test]

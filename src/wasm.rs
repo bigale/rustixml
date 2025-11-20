@@ -5,8 +5,8 @@
 
 #![cfg(target_arch = "wasm32")]
 
-use wasm_bindgen::prelude::*;
 use crate::{parse_ixml_grammar, NativeParser};
+use wasm_bindgen::prelude::*;
 
 // Set panic hook for better error messages in browser
 #[cfg(feature = "console_error_panic_hook")]
@@ -62,7 +62,7 @@ impl IxmlParser {
 
         let ast = parse_ixml_grammar(grammar)
             .map_err(|e| JsValue::from_str(&format!("Grammar parse error: {}", e)))?;
-        
+
         Ok(IxmlParser {
             parser: NativeParser::new(ast),
         })
@@ -124,14 +124,19 @@ pub fn conformance_info() -> String {
 pub fn parse_ixml_template(grammar: &str, input: &str) -> String {
     match IxmlParser::new(grammar) {
         Ok(parser) => match parser.parse(input) {
-            ParseResult { success: true, output, .. } => {
+            ParseResult {
+                success: true,
+                output,
+                ..
+            } => {
                 // Escape HTML for display
                 let escaped = output
                     .replace('&', "&amp;")
                     .replace('<', "&lt;")
                     .replace('>', "&gt;");
-                
-                format!(r#"
+
+                format!(
+                    r#"
                     <div class="result success">
                         <h3>✅ Parse Successful</h3>
                         <div class="output-section">
@@ -143,29 +148,41 @@ pub fn parse_ixml_template(grammar: &str, input: &str) -> String {
                             <span class="badge">Length: {} chars</span>
                         </div>
                     </div>
-                "#, escaped, parser.rule_count(), output.len())
-            },
-            ParseResult { error: Some(err), .. } => {
-                format!(r#"
+                "#,
+                    escaped,
+                    parser.rule_count(),
+                    output.len()
+                )
+            }
+            ParseResult {
+                error: Some(err), ..
+            } => {
+                format!(
+                    r#"
                     <div class="result error">
                         <h3>❌ Parse Failed</h3>
                         <div class="error-section">
                             <pre class="error-message">{}</pre>
                         </div>
                     </div>
-                "#, err)
-            },
-            _ => String::from(r#"<div class="result error"><h3>Unknown error</h3></div>"#)
+                "#,
+                    err
+                )
+            }
+            _ => String::from(r#"<div class="result error"><h3>Unknown error</h3></div>"#),
         },
         Err(e) => {
-            format!(r#"
+            format!(
+                r#"
                 <div class="result error">
                     <h3>❌ Grammar Error</h3>
                     <div class="error-section">
                         <pre class="error-message">{:?}</pre>
                     </div>
                 </div>
-            "#, e)
+            "#,
+                e
+            )
         }
     }
 }
@@ -179,13 +196,13 @@ pub fn load_example_template(example_name: &str) -> String {
 word: letter+, -" "?.
 letter: ["a"-"z"; "A"-"Z"]."#,
             "hello world",
-            "Simple whitespace-separated words"
+            "Simple whitespace-separated words",
         ),
         "numbers" => (
             r#"number: digit+.
 digit: ["0"-"9"]."#,
             "42",
-            "Simple number parser"
+            "Simple number parser",
         ),
         "date" => (
             r#"date: year, -"-", month, -"-", day.
@@ -194,17 +211,17 @@ month: digit, digit.
 day: digit, digit.
 -digit: ["0"-"9"]."#,
             "2024-03-15",
-            "ISO date format parser (YYYY-MM-DD)"
+            "ISO date format parser (YYYY-MM-DD)",
         ),
         _ => (
             r#"greeting: "Hello, ", name, "!".
 name: letter+.
 letter: ["A"-"Z"; "a"-"z"]."#,
             "Hello, World!",
-            "Default greeting example"
-        )
+            "Default greeting example",
+        ),
     };
-    
+
     // Simple JSON-like escaping for JavaScript strings
     let grammar_escaped = grammar
         .replace('\\', "\\\\")
@@ -216,8 +233,9 @@ letter: ["A"-"Z"; "a"-"z"]."#,
         .replace('"', "\\\"")
         .replace('\n', "\\n")
         .replace('\r', "\\r");
-    
-    format!(r#"
+
+    format!(
+        r#"
         <div class="example-loaded">
             <h4>📚 Loaded: {}</h4>
             <p>{}</p>
@@ -237,12 +255,7 @@ letter: ["A"-"Z"; "a"-"z"]."#,
                 document.getElementById('input').value = "{}";
             </script>
         </div>
-    "#, 
-        example_name, 
-        description, 
-        grammar, 
-        input,
-        grammar_escaped,
-        input_escaped
+    "#,
+        example_name, description, grammar, input, grammar_escaped, input_escaped
     )
 }

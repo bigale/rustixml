@@ -15,7 +15,7 @@ fn main() -> Result<(), String> {
 
     let ast1 = parse_ixml_grammar(grammar1)?;
     let parser1 = NativeParser::new(ast1);
-    
+
     let xml1 = parser1.parse("Hello, World!")?;
     println!("Input:  'Hello, World!'");
     println!("Output: {}\n", xml1);
@@ -32,7 +32,7 @@ fn main() -> Result<(), String> {
 
     let ast2 = parse_ixml_grammar(grammar2)?;
     let parser2 = NativeParser::new(ast2);
-    
+
     let xml2 = parser2.parse("2024-11-20")?;
     println!("Input:  '2024-11-20'");
     println!("Output: {}\n", xml2);
@@ -49,7 +49,7 @@ fn main() -> Result<(), String> {
 
     let ast3 = parse_ixml_grammar(grammar3)?;
     let parser3 = NativeParser::new(ast3);
-    
+
     let xml3 = parser3.parse("Alice,30,NYC")?;
     println!("Input:  'Alice,30,NYC'");
     println!("Output: {}\n", xml3);
@@ -65,7 +65,7 @@ fn main() -> Result<(), String> {
 
     let ast4 = parse_ixml_grammar(grammar4)?;
     let parser4 = NativeParser::new(ast4);
-    
+
     let xml4 = parser4.parse("The quick brown.")?;
     println!("Input:  'The quick brown.'");
     println!("Output: {}\n", xml4);
@@ -81,12 +81,12 @@ fn main() -> Result<(), String> {
 
     let ast5 = parse_ixml_grammar(grammar5)?;
     let parser5 = NativeParser::new(ast5);
-    
+
     let xml5 = parser5.parse("<div>Hello</div>")?;
     println!("Input:  '<div>Hello</div>'");
     println!("Output: {}\n", xml5);
 
     println!("=== All examples completed successfully! ===");
-    
+
     Ok(())
 }

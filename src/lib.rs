@@ -30,24 +30,24 @@
 //! - 🔒 Pure safe Rust
 
 pub mod ast;
-pub mod lexer;
-pub mod grammar_parser;
+pub mod charclass;
 pub mod grammar_ast;
+pub mod grammar_parser;
 pub mod input_stream;
+pub mod lexer;
 pub mod native_parser;
 pub mod parse_context;
 pub mod xml_node;
-pub mod charclass;
 
 // WASM bindings (only when compiling for wasm32)
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
 // Re-export main API
+pub use ast::IxmlGrammar;
 pub use grammar_ast::parse_ixml_grammar;
 pub use native_parser::NativeParser;
 pub use parse_context::{ParseContext, ParseError, ParseResult};
-pub use ast::IxmlGrammar;
 
 // Re-export WASM API for convenience
 #[cfg(target_arch = "wasm32")]

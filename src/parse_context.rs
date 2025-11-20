@@ -11,10 +11,10 @@ use std::collections::HashSet;
 pub struct ParseContext {
     /// Current rule being parsed (for error messages)
     pub rule_name: String,
-    
+
     /// Recursion depth (for debugging and loop detection)
     pub depth: usize,
-    
+
     /// (rule_name, position) pairs currently on the call stack
     /// for left-recursion detection
     pub left_recursion: HashSet<(String, usize)>,
@@ -34,13 +34,13 @@ impl ParseContext {
     pub fn enter_rule(&mut self, rule_name: &str, position: usize) -> bool {
         self.depth += 1;
         self.rule_name = rule_name.to_string();
-        
+
         // Check if we're already parsing this rule at this position (left-recursion)
         let key = (rule_name.to_string(), position);
         if self.left_recursion.contains(&key) {
             return false; // Left recursion detected
         }
-        
+
         self.left_recursion.insert(key);
         true
     }
@@ -64,7 +64,7 @@ impl Default for ParseContext {
 pub struct ParseResult {
     /// The parsed XML node (None if suppressed with - mark)
     pub node: Option<XmlNode>,
-    
+
     /// Number of characters consumed from input
     pub consumed: usize,
 }
@@ -104,10 +104,7 @@ impl ParseResult {
 #[derive(Debug, Clone)]
 pub enum ParseError {
     /// Unexpected end of input
-    UnexpectedEof {
-        position: usize,
-        expected: String,
-    },
+    UnexpectedEof { position: usize, expected: String },
 
     /// Terminal literal didn't match
     TerminalMismatch {
@@ -132,22 +129,13 @@ pub enum ParseError {
     },
 
     /// Rule not found in grammar
-    UndefinedRule {
-        rule: String,
-        position: usize,
-    },
+    UndefinedRule { rule: String, position: usize },
 
     /// Direct left recursion detected
-    LeftRecursion {
-        rule: String,
-        position: usize,
-    },
+    LeftRecursion { rule: String, position: usize },
 
     /// Custom error message
-    Custom {
-        message: String,
-        position: usize,
-    },
+    Custom { message: String, position: usize },
 }
 
 impl ParseError {
@@ -234,7 +222,9 @@ impl std::fmt::Display for ParseError {
             ParseError::UnexpectedEof { expected, .. } => {
                 write!(f, "Unexpected EOF, expected {}", expected)
             }
-            ParseError::TerminalMismatch { expected, actual, .. } => {
+            ParseError::TerminalMismatch {
+                expected, actual, ..
+            } => {
                 write!(f, "Expected '{}' but found '{}'", expected, actual)
             }
             ParseError::CharClassMismatch {
@@ -247,7 +237,11 @@ impl std::fmt::Display for ParseError {
                 write!(f, "Expected {}[{}] but found '{}'", neg, charclass, actual)
             }
             ParseError::NoAlternativeMatched { rule, attempts, .. } => {
-                write!(f, "No alternative matched in '{}' ({} tried)", rule, attempts)
+                write!(
+                    f,
+                    "No alternative matched in '{}' ({} tried)",
+                    rule, attempts
+                )
             }
             ParseError::UndefinedRule { rule, .. } => {
                 write!(f, "Undefined rule '{}'", rule)
@@ -288,7 +282,7 @@ mod tests {
 
         ctx.exit_rule("test", 0);
         assert_eq!(ctx.depth, 1); // Back to level 1
-        
+
         ctx.exit_rule("test", 0);
         assert_eq!(ctx.depth, 0);
         assert!(!ctx.left_recursion.contains(&("test".to_string(), 0)));
