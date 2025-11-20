@@ -463,8 +463,29 @@ impl NativeParser {
                 })
             }
             Mark::Promoted => {
-                // Promote content (unwrap)
-                Some(n)
+                // Promote content: Override any rule-level mark and wrap in element
+                // If the result is NOT already wrapped in its rule name, wrap it
+                match n {
+                    XmlNode::Element { ref name, .. } if name == &rule.name => {
+                        // Already wrapped in rule element, keep as-is
+                        Some(n)
+                    }
+                    _ => {
+                        // Not wrapped or wrapped in different element - wrap it
+                        // First unwrap if it's a _sequence
+                        let children = match n {
+                            XmlNode::Element { name, children, .. } if name == "_sequence" => children,
+                            other => vec![other],
+                        };
+                        
+                        // Wrap in rule element
+                        Some(XmlNode::Element {
+                            name: rule.name.clone(),
+                            attributes: vec![],
+                            children,
+                        })
+                    }
+                }
             }
             Mark::None => {
                 // Keep as-is (already wrapped by rule-level mark)
