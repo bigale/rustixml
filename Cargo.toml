@@ -6,9 +6,19 @@ authors = ["Alex Everitt <bigale@netzero.net>"]
 description = "Native iXML (Invisible XML) parser - 83.7% spec conformance, works in Rust and WebAssembly"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/bigale/rustixml"
+homepage = "https://github.com/bigale/rustixml"
+documentation = "https://docs.rs/rustixml"
 keywords = ["parser", "xml", "ixml", "invisible-xml", "wasm"]
 categories = ["parsing", "text-processing", "wasm"]
 readme = "README.md"
+exclude = [
+    "ixml_tests/",
+    "target/",
+    ".github/",
+    ".git/",
+    "*.log",
+    "conformance_results*.txt"
+]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
