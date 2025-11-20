@@ -4,6 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>rustixml - WASMZ Demo (True wasm:// Routing)</title>
+    
+    <!-- WASMZ Router Functions - Must load before iframe onload -->
+    <script>
+        // Global htmz update handler
+        window.htmzUpdate = function(iframe) {
+            try {
+                const targetId = iframe.src.split('#')[1];
+                if (targetId && iframe.contentDocument) {
+                    const content = iframe.contentDocument.body.innerHTML;
+                    const target = document.getElementById(targetId);
+                    if (target) {
+                        target.innerHTML = content;
+                    }
+                }
+            } catch (e) {
+                console.error('htmz update failed:', e);
+            }
+        };
+
+        // Copy textarea values to hidden form fields before submission
+        function copyTextareas() {
+            document.getElementById('form_grammar').value = document.getElementById('grammar').value;
+            document.getElementById('form_input').value = document.getElementById('input').value;
+        }
+
+        // Make copyTextareas available globally
+        window.copyTextareas = copyTextareas;
+    </script>
+    
     <style>
         * {
             box-sizing: border-box;
@@ -376,34 +405,6 @@ letter: ["A"-"Z"; "a"-"z"].</textarea>
             <iframe name="htmz" id="htmz" onload="window.htmzUpdate(this)"></iframe>
         </main>
     </div>
-
-    <!-- WASMZ Router: Intercepts wasm:// URLs and routes to WASM functions -->
-    <script>
-        // Global htmz update handler
-        window.htmzUpdate = function(iframe) {
-            try {
-                const targetId = iframe.src.split('#')[1];
-                if (targetId && iframe.contentDocument) {
-                    const content = iframe.contentDocument.body.innerHTML;
-                    const target = document.getElementById(targetId);
-                    if (target) {
-                        target.innerHTML = content;
-                    }
-                }
-            } catch (e) {
-                console.error('htmz update failed:', e);
-            }
-        };
-
-        // Copy textarea values to hidden form fields before submission
-        function copyTextareas() {
-            document.getElementById('form_grammar').value = document.getElementById('grammar').value;
-            document.getElementById('form_input').value = document.getElementById('input').value;
-        }
-
-        // Make copyTextareas available globally
-        window.copyTextareas = copyTextareas;
-    </script>
 
     <!-- WASM Module -->
     <script type="module">
