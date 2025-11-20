@@ -340,7 +340,8 @@
                 <p style="margin-top: 10px;">
                     <strong>Key Innovation:</strong> The router intercepts <code>wasm://</code> URLs and routes
                     them to WebAssembly functions compiled from Rust. Each function returns an HTML template string
-                    that htmz injects into the DOM at the target location. Zero network latency, native speed.
+                    that the router directly injects into the target DOM element. Zero network latency, native speed,
+                    zero backend code.
                 </p>
             </div>
 
@@ -350,7 +351,7 @@
                 <p>2. <strong>Router Intercepts</strong>: JavaScript router catches the wasm:// URL before browser handles it</p>
                 <p>3. <strong>Native Execution</strong>: Rust code runs at ~5-10x JavaScript speed in browser sandbox</p>
                 <p>4. <strong>Template Response</strong>: WASM function returns HTML template string (not just data!)</p>
-                <p>5. <strong>DOM Update</strong>: htmz injects template into <code>#result</code> div instantly</p>
+                <p>5. <strong>DOM Update</strong>: Router directly injects template into target div instantly (no iframe needed!)</p>
             </div>
 
             <div class="examples">
@@ -506,27 +507,25 @@ letter: ["A"-"Z"; "a"-"z"].</textarea>
                     
                     // Determine target element
                     const target = form.getAttribute('target');
-                    let targetElement;
                     
-                    if (target === 'htmz') {
-                        // For htmz target, use iframe pattern (traditional htmz)
-                        // Create a data URL with the HTML
-                        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(`
-                            <!DOCTYPE html>
-                            <html><head><meta charset="utf-8"></head><body>${html}</body></html>
-                        `);
+                    // For WASMZ, we can directly inject since we have the HTML
+                    // No need for iframe data URL round-trip
+                    const targetId = form.dataset.target || 'result';
+                    const targetElement = document.getElementById(targetId);
+                    
+                    if (targetElement) {
+                        targetElement.innerHTML = html;
+                        console.log('✅ Content injected into #' + targetId);
                         
-                        // Find target from form's nearest ancestor with fragment or default
-                        const targetId = findTargetId(form);
-                        console.log('📍 Target ID:', targetId);
-                        console.log('📦 Setting iframe src to:', dataUrl.substring(0, 100) + '...#' + targetId);
-                        document.querySelector('iframe[name="htmz"]').src = dataUrl + '#' + targetId;
+                        // Execute any inline scripts in the injected HTML
+                        const scripts = targetElement.querySelectorAll('script');
+                        scripts.forEach(script => {
+                            const newScript = document.createElement('script');
+                            newScript.textContent = script.textContent;
+                            script.parentNode.replaceChild(newScript, script);
+                        });
                     } else {
-                        // Direct injection (non-htmz pattern)
-                        targetElement = target ? document.getElementById(target) : document.getElementById('result');
-                        if (targetElement) {
-                            targetElement.innerHTML = html;
-                        }
+                        console.error('❌ Target element not found:', targetId);
                     }
                 } catch (err) {
                     console.error('WASMZ execution failed:', err);
