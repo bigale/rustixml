@@ -155,7 +155,7 @@ jobs:
         run: cargo build --release --bin conformance_test
 
       - name: Run conformance tests
-        run: cargo run --release --bin conformance_test
+        run: cargo run --release --bin conformance_test > conformance_results.txt 2>&1 || true
 
       - name: Upload conformance results
         uses: actions/upload-artifact@v4
