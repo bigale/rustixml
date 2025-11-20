@@ -450,26 +450,36 @@ fn main() {
 - [ ] Clean up Cargo.toml dependencies
 - [ ] Update .gitignore
 
-### Week 2: Documentation
+### Week 2: Documentation & WASM
 - [ ] Write professional README.md
 - [ ] Create CONTRIBUTING.md
 - [ ] Consolidate docs/ to 4-5 essential files
 - [ ] Write API documentation
 - [ ] Create CHANGELOG.md
+- [ ] **Implement WASM bindings (src/wasm.rs)**
+- [ ] **Create interactive demo website (www/)**
+- [ ] **Set up GitHub Pages for live demo**
 
-### Week 3: Polish
-- [ ] Add 3-5 examples/
+### Week 3: Polish & Testing
+- [ ] Add 3-5 examples/ (Rust)
 - [ ] Add benchmarks/
-- [ ] Set up CI/CD
+- [ ] Set up CI/CD (including WASM builds)
+- [ ] Test WASM in multiple browsers
 - [ ] Add badges to README
 - [ ] Create GitHub repository description
+- [ ] **Test npm package publishing flow**
 
 ### Week 4: Public Release
 - [ ] Make repository public
+- [ ] **Publish live demo to GitHub Pages**
+- [ ] **Publish to crates.io (Rust)**
+- [ ] **Publish to npm (JavaScript/WASM)**
 - [ ] Post on /r/rust
-- [ ] Post on Hacker News
+- [ ] Post on Hacker News (emphasize WASM!)
 - [ ] Tweet about it
 - [ ] Submit to This Week in Rust
+- [ ] **Post on /r/webassembly**
+- [ ] **Share on JavaScript/TypeScript communities**
 
 ## Decision Matrix
 
