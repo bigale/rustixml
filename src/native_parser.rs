@@ -421,7 +421,40 @@ impl NativeParser {
 
         // Apply factor-level mark to the result
         let node = result.node.map(|n| match mark {
-            Mark::Hidden => return None,
+            Mark::Hidden => {
+                // Factor-level hiding: unwrap element and pass through children + attributes
+                // If the result is an Element, extract its children and attributes
+                match n {
+                    XmlNode::Element { children, attributes, .. } => {
+                        // Pass through both children and attributes
+                        // Convert attributes back to Attribute nodes
+                        let mut all_nodes = Vec::new();
+                        
+                        // Add attributes as Attribute nodes
+                        for (name, value) in attributes {
+                            all_nodes.push(XmlNode::Attribute { name, value });
+                        }
+                        
+                        // Add children
+                        all_nodes.extend(children);
+                        
+                        if all_nodes.is_empty() {
+                            return None;
+                        } else if all_nodes.len() == 1 {
+                            return Some(all_nodes.into_iter().next().unwrap());
+                        } else {
+                            // Multiple items - wrap in _sequence for now
+                            return Some(XmlNode::Element {
+                                name: "_sequence".to_string(),
+                                attributes: vec![],
+                                children: all_nodes,
+                            });
+                        }
+                    }
+                    // For non-Element nodes (Text, Attribute), keep them
+                    other => return Some(other),
+                }
+            }
             Mark::Attribute => {
                 // Convert to attribute
                 Some(XmlNode::Attribute {
