@@ -181,13 +181,11 @@ letter: ["a"-"z"; "A"-"Z"]."#,
             "hello world",
             "Simple whitespace-separated words"
         ),
-        "csv" => (
-            r#"csv: row+.
-row: field, (-",", field)*, -#A.
-field: char*.
--char: ~[","; #A]."#,
-            "name,age,city\nAlice,30,NYC\nBob,25,LA",
-            "CSV parser - comma-separated values"
+        "numbers" => (
+            r#"number: digit+.
+digit: ["0"-"9"]."#,
+            "42",
+            "Simple number parser"
         ),
         "date" => (
             r#"date: year, -"-", month, -"-", day.
