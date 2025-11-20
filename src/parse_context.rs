@@ -3,7 +3,7 @@
 //! Tracks parsing state during recursive descent, including rule stack
 //! for left-recursion detection and parse results with consumed counts.
 
-use crate::runtime_parser::XmlNode;
+use crate::xml_node::XmlNode;
 use std::collections::HashSet;
 
 /// Context maintained during parsing for tracking and error reporting

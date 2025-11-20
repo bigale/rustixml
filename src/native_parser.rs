@@ -7,7 +7,8 @@
 use crate::ast::{Alternatives, BaseFactor, Factor, IxmlGrammar, Mark, Repetition, Rule, Sequence};
 use crate::input_stream::InputStream;
 use crate::parse_context::{ParseContext, ParseError, ParseResult};
-use crate::runtime_parser::{charclass_to_rangeset, XmlNode};
+use crate::charclass::charclass_to_rangeset;
+use crate::xml_node::XmlNode;
 use std::collections::HashMap;
 
 /// Native iXML parser that interprets grammar ASTs directly
@@ -27,6 +28,11 @@ impl NativeParser {
             .collect();
 
         NativeParser { grammar, rules }
+    }
+
+    /// Get the number of rules in the grammar
+    pub fn rule_count(&self) -> usize {
+        self.rules.len()
     }
 
     /// Parse input text according to the grammar
