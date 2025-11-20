@@ -114,3 +114,136 @@ pub fn version() -> String {
 pub fn conformance_info() -> String {
     "83.7% conformance (41/49 tests passing)".to_string()
 }
+
+// ============================================================================
+// WASMZ Pattern: Functions that return HTML templates for htmz routing
+// ============================================================================
+
+/// Parse iXML and return HTML template (for WASMZ wasm:// routing)
+#[wasm_bindgen]
+pub fn parse_ixml_template(grammar: &str, input: &str) -> String {
+    match IxmlParser::new(grammar) {
+        Ok(parser) => match parser.parse(input) {
+            ParseResult { success: true, output, .. } => {
+                // Escape HTML for display
+                let escaped = output
+                    .replace('&', "&amp;")
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;");
+                
+                format!(r#"
+                    <div class="result success">
+                        <h3>✅ Parse Successful</h3>
+                        <div class="output-section">
+                            <h4>XML Output:</h4>
+                            <pre class="xml-output">{}</pre>
+                        </div>
+                        <div class="stats">
+                            <span class="badge">Rules: {}</span>
+                            <span class="badge">Length: {} chars</span>
+                        </div>
+                    </div>
+                "#, escaped, parser.rule_count(), output.len())
+            },
+            ParseResult { error: Some(err), .. } => {
+                format!(r#"
+                    <div class="result error">
+                        <h3>❌ Parse Failed</h3>
+                        <div class="error-section">
+                            <pre class="error-message">{}</pre>
+                        </div>
+                    </div>
+                "#, err)
+            },
+            _ => String::from(r#"<div class="result error"><h3>Unknown error</h3></div>"#)
+        },
+        Err(e) => {
+            format!(r#"
+                <div class="result error">
+                    <h3>❌ Grammar Error</h3>
+                    <div class="error-section">
+                        <pre class="error-message">{:?}</pre>
+                    </div>
+                </div>
+            "#, e)
+        }
+    }
+}
+
+/// Load example grammar and input (returns HTML template)
+#[wasm_bindgen]
+pub fn load_example_template(example_name: &str) -> String {
+    let (grammar, input, description) = match example_name {
+        "simple" => (
+            r#"sentence: word+.
+word: letter+, -" "?.
+letter: ["a"-"z"; "A"-"Z"]."#,
+            "hello world",
+            "Simple whitespace-separated words"
+        ),
+        "arithmetic" => (
+            r#"expr: term, ("+", term | "-", term)*.
+term: factor, ("*", factor | "/", factor)*.
+factor: number | "(", expr, ")".
+number: ["0"-"9"]+."#,
+            "2 + 3 * 4",
+            "Basic arithmetic with operator precedence"
+        ),
+        "date" => (
+            r#"date: year, -"-", month, -"-", day.
+year: ["0"-"9"]{4}.
+month: ["0"-"9"]{2}.
+day: ["0"-"9"]{2}."#,
+            "2024-03-15",
+            "ISO date format parser"
+        ),
+        _ => (
+            r#"greeting: "Hello, ", name, "!".
+name: letter+.
+letter: ["A"-"Z"; "a"-"z"]."#,
+            "Hello, World!",
+            "Default greeting example"
+        )
+    };
+    
+    // Simple JSON-like escaping for JavaScript strings
+    let grammar_escaped = grammar
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r");
+    let input_escaped = input
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r");
+    
+    format!(r#"
+        <div class="example-loaded">
+            <h4>📚 Loaded: {}</h4>
+            <p>{}</p>
+            <div class="example-content">
+                <div class="grammar-preview">
+                    <strong>Grammar:</strong>
+                    <pre>{}</pre>
+                </div>
+                <div class="input-preview">
+                    <strong>Input:</strong>
+                    <pre>{}</pre>
+                </div>
+            </div>
+            <script>
+                // Update form fields
+                document.getElementById('grammar').value = "{}";
+                document.getElementById('input').value = "{}";
+            </script>
+        </div>
+    "#, 
+        example_name, 
+        description, 
+        grammar, 
+        input,
+        grammar_escaped,
+        input_escaped
+    )
+}

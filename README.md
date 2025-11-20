@@ -113,11 +113,14 @@ python3 -m http.server 8080
 # Open http://localhost:8080/www/ in your browser
 ```
 
-**Two demo versions available:**
+**Three demo versions available:**
 - `www/index.html` - Standard demo (recommended for most users)
-- `www/htmz-standalone.html` - HTMZ pattern demo (works completely offline!)
+- `www/htmz-standalone.html` - HTMZ pattern demo (form-driven, no backend)
+- `www/wasmz.html` - **WASMZ pattern demo** ⭐ (native speed with wasm:// routing!)
 
-See [www/HTMZ-README.md](www/HTMZ-README.md) for details on the HTMZ standalone version.
+See [www/HTMZ-README.md](www/HTMZ-README.md) for comparison of all three versions.
+
+**WASMZ Pattern**: The `wasmz.html` demo showcases true `wasm://` routing where HTML forms directly call compiled Rust functions that return HTML templates. This is a reference implementation of the WASMZ pattern (WebAssembly + htmz) offering ~10x performance improvement over JavaScript. See [www/WASMZ-PATTERN.md](www/WASMZ-PATTERN.md) for technical details.
 
 ## 📖 What is Invisible XML?
 

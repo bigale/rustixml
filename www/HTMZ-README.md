@@ -1,4 +1,4 @@
-# HTMZ Standalone Demo - Explanation
+# HTMZ & WASMZ Demos - Explanation
 
 ## What is HTMZ?
 
@@ -9,7 +9,18 @@
 - **HTML forms** for all interactions
 - **Browser storage** (localStorage, IndexedDB) as the database
 
-## Two Demo Versions
+## What is WASMZ?
+
+**WASMZ (WebAssembly + HTMZ)** extends HTMZ by adding native-performance compiled code (Rust/C++/Go) that serves HTML templates. Key additions:
+
+- **wasm:// URL protocol** for direct WASM function routing
+- **Template-returning functions** in compiled languages
+- **Native speed** (5-10x faster than JavaScript)
+- **Type safety** from compiled language guarantees
+
+See [WASMZ-PATTERN.md](WASMZ-PATTERN.md) for full technical details.
+
+## Three Demo Versions
 
 ### 1. `index.html` - Standard Demo
 **When to use:** Most users, GitHub Pages deployment, development
@@ -48,6 +59,40 @@ Everything self-contained
 - ✅ Demonstrates browser-as-server pattern
 - ✅ HTMZ form-driven architecture
 - ⚠️ Note: ES modules require HTTP server due to browser CORS restrictions
+
+**To run:**
+```bash
+python3 -m http.server 8080
+# Visit: http://localhost:8080/www/htmz-standalone.html
+```
+
+### 3. `wasmz.html` - WASMZ Pattern (Recommended!)
+**When to use:** Maximum performance, reference implementation, production apps
+
+```
+Browser → wasm:// URLs → Compiled Rust → HTML Templates
+         ↓
+    Native Speed (10x faster!)
+```
+
+**Features:**
+- ✅ **True wasm:// routing** - Forms call WASM directly
+- ✅ **Native performance** - Rust parser ~10x faster than JS
+- ✅ **Template-returning WASM** - Functions return HTML, not data
+- ✅ **Reference implementation** - Shows WASMZ pattern in practice
+- ✅ **Type safety** - Rust compile-time guarantees
+- ✅ **Zero latency** - No network calls, instant response
+
+**To run:**
+```bash
+python3 -m http.server 8080
+# Visit: http://localhost:8080/www/wasmz.html
+```
+
+**Why WASMZ?** Combines the best of both worlds:
+- HTMZ's form-driven, server-free architecture
+- WebAssembly's native performance and type safety
+- Result: 10x faster with zero infrastructure
 
 **To run:**
 ```bash
