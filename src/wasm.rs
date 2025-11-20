@@ -181,21 +181,22 @@ letter: ["a"-"z"; "A"-"Z"]."#,
             "hello world",
             "Simple whitespace-separated words"
         ),
-        "arithmetic" => (
-            r#"expr: term, ("+", term | "-", term)*.
-term: factor, ("*", factor | "/", factor)*.
-factor: number | "(", expr, ")".
-number: ["0"-"9"]+."#,
-            "2 + 3 * 4",
-            "Basic arithmetic with operator precedence"
+        "csv" => (
+            r#"csv: row+.
+row: field, (-",", field)*, -#A.
+field: char*.
+-char: ~[","; #A]."#,
+            "name,age,city\nAlice,30,NYC\nBob,25,LA",
+            "CSV parser - comma-separated values"
         ),
         "date" => (
             r#"date: year, -"-", month, -"-", day.
-year: ["0"-"9"]{4}.
-month: ["0"-"9"]{2}.
-day: ["0"-"9"]{2}."#,
+year: digit, digit, digit, digit.
+month: digit, digit.
+day: digit, digit.
+-digit: ["0"-"9"]."#,
             "2024-03-15",
-            "ISO date format parser"
+            "ISO date format parser (YYYY-MM-DD)"
         ),
         _ => (
             r#"greeting: "Hello, ", name, "!".
