@@ -1,1 +1,6 @@
 /target
+/scratch
+*.log
+conformance_results*.txt
+.aikit/
+.gitforai/

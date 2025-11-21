@@ -52,6 +52,11 @@ name = "conformance_test"
 path = "src/bin/native_conformance_runner.rs"
 doc = false
 
+[[bin]]
+name = "rustixml"
+path = "src/bin/ixml_cli.rs"
+doc = false
+
 [profile.release]
 opt-level = 3
 lto = true
