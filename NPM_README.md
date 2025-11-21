@@ -1,6 +1,7 @@
-# @rustixml/parser
+# @bigale/rustixml
 
-[![npm version](https://img.shields.io/npm/v/@rustixml/parser.svg)](https://www.npmjs.com/package/@rustixml/parser)
+[![GitHub Package](https://img.shields.io/badge/github_packages-@bigale/rustixml-blue.svg)](https://github.com/bigale/rustixml/pkgs/npm/rustixml)
+[![crates.io](https://img.shields.io/crates/v/rustixml.svg)](https://crates.io/crates/rustixml)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](https://github.com/bigale/rustixml)
 
 **WebAssembly iXML parser for JavaScript and TypeScript**
@@ -18,16 +19,36 @@ Turn any text into XML using simple grammar rules. This is the WebAssembly build
 
 ## 📦 Installation
 
+This package is published to **GitHub Packages**. You need to configure npm to use GitHub's registry for `@bigale` scoped packages:
+
+### One-time Setup
+
+Create or edit your `~/.npmrc` file:
+
 ```bash
-npm install @rustixml/parser
+echo "@bigale:registry=https://npm.pkg.github.com" >> ~/.npmrc
 ```
+
+Or add to your project's `.npmrc`:
+
+```
+@bigale:registry=https://npm.pkg.github.com
+```
+
+### Install
+
+```bash
+npm install @bigale/rustixml
+```
+
+> **Note**: For public packages, no authentication is needed to install. Authentication is only required for publishing.
 
 ## 🚀 Quick Start
 
 ### ES Modules (Browser/Node.js)
 
 ```javascript
-import init, { parse_ixml } from '@rustixml/parser';
+import init, { parse_ixml } from '@bigale/rustixml';
 
 // Initialize WASM (call once)
 await init();
@@ -55,7 +76,7 @@ if (result.success) {
 For better performance when parsing multiple inputs with the same grammar:
 
 ```javascript
-import init, { IxmlParser } from '@rustixml/parser';
+import init, { IxmlParser } from '@bigale/rustixml';
 
 await init();
 
@@ -78,7 +99,7 @@ console.log(parser.rule_count());  // 2
 ### Node.js (CommonJS)
 
 ```javascript
-const { parse_ixml } = require('@rustixml/parser');
+const { parse_ixml } = require('@bigale/rustixml');
 
 // Note: You'll need to initialize WASM first
 // See examples in the repository
@@ -170,7 +191,7 @@ Benchmarked against equivalent JavaScript parsers:
 ### With TypeScript
 
 ```typescript
-import init, { parse_ixml, ParseResult } from '@rustixml/parser';
+import init, { parse_ixml, ParseResult } from '@bigale/rustixml';
 
 await init();
 
@@ -185,7 +206,7 @@ if (result.success) {
 ### Custom WASM Path
 
 ```javascript
-import init from '@rustixml/parser';
+import init from '@bigale/rustixml';
 
 // Load WASM from custom location
 await init('/path/to/rustixml_bg.wasm');
