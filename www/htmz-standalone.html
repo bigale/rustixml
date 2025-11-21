@@ -430,7 +430,7 @@ number: ["0"-"9"]+.`,
         // Import WASM module
         // Note: This won't work with file:// protocol due to CORS
         // Use a local server instead: python3 -m http.server 8080
-        import init, { parse_ixml } from '../pkg/rustixml.js';
+        import init, { parse_ixml } from './rustixml.js';
 
         // Initialize WASM
         let wasmReady = false;
