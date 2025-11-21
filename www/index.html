@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>rustixml - iXML Parser Demo</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+        }
+
+        main {
+            padding: 30px;
+        }
+
+        .editor-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .editor-section {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor-section label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .char-count {
+            font-size: 0.85em;
+            color: #666;
+            font-weight: normal;
+        }
+
+        textarea {
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 14px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            resize: vertical;
+            min-height: 200px;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .output-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 300px;
+        }
+
+        .output-section h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .output-content {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            min-height: 250px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .success {
+            color: #27ae60;
+        }
+
+        .error {
+            color: #e74c3c;
+        }
+
+        .info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .examples {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .examples h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .example-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .example-btn {
+            padding: 10px 20px;
+            background: #f0f0f0;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .example-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        @media (max-width: 900px) {
+            .editor-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🦀 rustixml</h1>
+            <p class="subtitle">Invisible XML Parser in Rust + WebAssembly</p>
+            <div class="stats">
+                <div class="stat" id="wasm-size">WASM: 50KB gzipped</div>
+                <div class="stat" id="conformance">83.7% spec conformance</div>
+                <div class="stat" id="rules-count">Rules: 0</div>
+            </div>
+        </header>
+
+        <main>
+            <div class="info">
+                <strong>ℹ️ About iXML:</strong> Invisible XML (iXML) lets you define grammars that parse text into XML. 
+                Write simple grammar rules, parse any text format, get structured XML output!
+            </div>
+
+            <div class="editor-grid">
+                <div class="editor-section">
+                    <label>
+                        iXML Grammar
+                        <span class="char-count" id="grammar-count">0 chars</span>
+                    </label>
+                    <textarea id="grammar" placeholder="Example:
+greeting: 'Hello, ', name, '!'.
+name: letter+.
+letter: ['A'-'Z'; 'a'-'z'].">greeting: "Hello, ", name, "!".
+name: letter+.
+letter: ["A"-"Z"; "a"-"z"].</textarea>
+                </div>
+
+                <div class="editor-section">
+                    <label>
+                        Input Text
+                        <span class="char-count" id="input-count">0 chars</span>
+                    </label>
+                    <textarea id="input" placeholder="Text to parse...">Hello, World!</textarea>
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button class="btn-primary" id="parse-btn">🚀 Parse</button>
+                <button class="btn-secondary" id="clear-btn">🗑️ Clear</button>
+            </div>
+
+            <div class="output-section">
+                <h3>📤 Output</h3>
+                <div class="output-content" id="output">
+                    Click "Parse" to see the XML output...
+                </div>
+            </div>
+
+            <div class="examples">
+                <h3>📚 Example Grammars</h3>
+                <div class="example-buttons">
+                    <button class="example-btn" data-example="greeting">Greeting</button>
+                    <button class="example-btn" data-example="csv">CSV Parser</button>
+                    <button class="example-btn" data-example="json">JSON Parser</button>
+                    <button class="example-btn" data-example="date">Date Parser</button>
+                    <button class="example-btn" data-example="arithmetic">Arithmetic</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        import init, { IxmlParser, parse_ixml, version, conformance_info } from '../pkg/rustixml.js';
+
+        const examples = {
+            greeting: {
+                grammar: `greeting: "Hello, ", name, "!".
+name: letter+.
+letter: ["A"-"Z"; "a"-"z"].`,
+                input: "Hello, World!"
+            },
+            csv: {
+                grammar: `csv: row+.
+row: field+separator, field, newline.
+field: char*.
+@separator: ",".
+-char: ~[","; #0A].
+-newline: #0A.`,
+                input: `name,age,city
+Alice,30,NYC
+Bob,25,LA`
+            },
+            json: {
+                grammar: `value: string; number; object; array.
+string: '"', char*, '"'.
+number: digit+.
+object: '{', pair+comma, '}'.
+array: '[', value+comma, ']'.
+pair: string, ':', value.
+@comma: ','.
+-char: ~['"'].
+-digit: ["0"-"9"].`,
+                input: '{"name":"Alice","age":30}'
+            },
+            date: {
+                grammar: `date: year, "-", month, "-", day.
+year: digit, digit, digit, digit.
+month: digit, digit.
+day: digit, digit.
+-digit: ["0"-"9"].`,
+                input: "2024-11-20"
+            },
+            arithmetic: {
+                grammar: `expr: term, ("+", term; "-", term)*.
+term: factor, ("*", factor; "/", factor)*.
+factor: number; "(", expr, ")".
+number: ["0"-"9"]+.`,
+                input: "2+3*4"
+            }
+        };
+
+        let parser = null;
+
+        async function initWasm() {
+            try {
+                await init();
+                console.log('WASM initialized successfully');
+                console.log('Version:', version());
+                console.log('Conformance:', conformance_info());
+            } catch (err) {
+                document.getElementById('output').innerHTML = 
+                    `<span class="error">Failed to initialize WASM: ${err.message}</span>`;
+            }
+        }
+
+        function updateCharCounts() {
+            const grammar = document.getElementById('grammar').value;
+            const input = document.getElementById('input').value;
+            document.getElementById('grammar-count').textContent = `${grammar.length} chars`;
+            document.getElementById('input-count').textContent = `${input.length} chars`;
+        }
+
+        function parseText() {
+            const grammar = document.getElementById('grammar').value;
+            const input = document.getElementById('input').value;
+            const output = document.getElementById('output');
+
+            if (!grammar.trim()) {
+                output.innerHTML = '<span class="error">Please enter a grammar</span>';
+                return;
+            }
+
+            if (!input.trim()) {
+                output.innerHTML = '<span class="error">Please enter input text</span>';
+                return;
+            }
+
+            try {
+                const startTime = performance.now();
+                const result = parse_ixml(grammar, input);
+                const endTime = performance.now();
+
+                if (result.success) {
+                    parser = new IxmlParser(grammar);
+                    const ruleCount = parser.rule_count();
+                    document.getElementById('rules-count').textContent = `Rules: ${ruleCount}`;
+                    
+                    output.innerHTML = `<span class="success">✓ Parsed successfully in ${(endTime - startTime).toFixed(2)}ms</span>\n\n${escapeHtml(result.output)}`;
+                } else {
+                    output.innerHTML = `<span class="error">✗ Parse failed</span>\n\n${escapeHtml(result.error || 'Unknown error')}`;
+                }
+            } catch (err) {
+                output.innerHTML = `<span class="error">✗ Error: ${escapeHtml(err.message)}</span>`;
+            }
+        }
+
+        function clearAll() {
+            document.getElementById('grammar').value = '';
+            document.getElementById('input').value = '';
+            document.getElementById('output').textContent = 'Click "Parse" to see the XML output...';
+            document.getElementById('rules-count').textContent = 'Rules: 0';
+            updateCharCounts();
+        }
+
+        function loadExample(exampleName) {
+            const example = examples[exampleName];
+            if (example) {
+                document.getElementById('grammar').value = example.grammar;
+                document.getElementById('input').value = example.input;
+                updateCharCounts();
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Event listeners
+        document.getElementById('parse-btn').addEventListener('click', parseText);
+        document.getElementById('clear-btn').addEventListener('click', clearAll);
+        document.getElementById('grammar').addEventListener('input', updateCharCounts);
+        document.getElementById('input').addEventListener('input', updateCharCounts);
+
+        document.querySelectorAll('.example-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                loadExample(e.target.dataset.example);
+            });
+        });
+
+        // Initialize
+        initWasm();
+        updateCharCounts();
+    </script>
+</body>
+</html>

@@ -6,21 +6,21 @@
 pub enum Token {
     Ident(String),
     String(String),
-    CharClass(String),  // Content between [ and ], e.g., "'a'-'z'" or "Ll"
-    HexChar(String),    // Hex-encoded character, e.g., "9" for #9, "a0" for #a0
+    CharClass(String), // Content between [ and ], e.g., "'a'-'z'" or "Ll"
+    HexChar(String),   // Hex-encoded character, e.g., "9" for #9, "a0" for #a0
     Colon,
     Period,
     Semicolon,
     Pipe,
     Plus,
     Star,
-    DoubleStar,   // ** for separated repetition
-    DoublePlus,   // ++ for separated repetition (one or more)
+    DoubleStar, // ** for separated repetition
+    DoublePlus, // ++ for separated repetition (one or more)
     Question,
     At,
     Minus,
-    Caret,  // For promoted mark ^
-    Tilde,  // For negated character classes ~[...]
+    Caret, // For promoted mark ^
+    Tilde, // For negated character classes ~[...]
     LParen,
     RParen,
     LBracket,
@@ -113,6 +113,7 @@ impl Lexer {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn skip_whitespace(&mut self) {
         while self.pos < self.input.len() && self.input[self.pos].is_whitespace() {
             self.pos += 1;
@@ -345,15 +346,21 @@ impl Lexer {
         match u32::from_str_radix(&hex, 16) {
             Ok(code_point) => {
                 if code_point > 0x10FFFF {
-                    return Err(format!("Invalid hex character #{}: exceeds maximum Unicode code point", hex));
+                    return Err(format!(
+                        "Invalid hex character #{}: exceeds maximum Unicode code point",
+                        hex
+                    ));
                 }
                 // Check for surrogates (0xD800-0xDFFF) and noncharacters
                 if (0xD800..=0xDFFF).contains(&code_point) {
-                    return Err(format!("Invalid hex character #{}: represents a surrogate code point", hex));
+                    return Err(format!(
+                        "Invalid hex character #{}: represents a surrogate code point",
+                        hex
+                    ));
                 }
                 Ok(Token::HexChar(hex))
             }
-            Err(_) => Err(format!("Invalid hex character #{}: value too large", hex))
+            Err(_) => Err(format!("Invalid hex character #{}: value too large", hex)),
         }
     }
 }

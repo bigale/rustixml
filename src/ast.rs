@@ -34,8 +34,8 @@ pub struct Factor {
 pub enum BaseFactor {
     Literal {
         value: String,
-        insertion: bool,  // true if this is insertion syntax +"text"
-        mark: Mark,       // mark for the literal (@, -, ^)
+        insertion: bool, // true if this is insertion syntax +"text"
+        mark: Mark,      // mark for the literal (@, -, ^)
     },
     Nonterminal {
         name: String,
@@ -43,8 +43,8 @@ pub enum BaseFactor {
     },
     CharClass {
         content: String,
-        negated: bool,  // true if ~[...]
-        mark: Mark,     // mark for the charclass (@, -, ^)
+        negated: bool, // true if ~[...]
+        mark: Mark,    // mark for the charclass (@, -, ^)
     },
     Group {
         alternatives: Box<Alternatives>,
@@ -53,20 +53,20 @@ pub enum BaseFactor {
 
 #[derive(Debug, Clone, PartialEq, Copy, Eq, Hash)]
 pub enum Mark {
-    None,       // no mark
-    Attribute,  // @name - becomes XML attribute
-    Hidden,     // -name - hidden from output
-    Promoted,   // ^name - promoted (replaces parent)
+    None,      // no mark
+    Attribute, // @name - becomes XML attribute
+    Hidden,    // -name - hidden from output
+    Promoted,  // ^name - promoted (replaces parent)
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Repetition {
-    None,           // no repetition
-    ZeroOrMore,     // *
-    OneOrMore,      // +
-    Optional,       // ?
-    SeparatedZeroOrMore(Box<Sequence>),  // **(sep)
-    SeparatedOneOrMore(Box<Sequence>),   // ++(sep)
+    None,                               // no repetition
+    ZeroOrMore,                         // *
+    OneOrMore,                          // +
+    Optional,                           // ?
+    SeparatedZeroOrMore(Box<Sequence>), // **(sep)
+    SeparatedOneOrMore(Box<Sequence>),  // ++(sep)
 }
 
 impl IxmlGrammar {
@@ -77,7 +77,11 @@ impl IxmlGrammar {
 
 impl Rule {
     pub fn new(name: String, mark: Mark, alternatives: Alternatives) -> Self {
-        Rule { name, mark, alternatives }
+        Rule {
+            name,
+            mark,
+            alternatives,
+        }
     }
 }
 
@@ -107,25 +111,43 @@ impl Factor {
     }
 
     pub fn simple(base: BaseFactor) -> Self {
-        Factor { base, repetition: Repetition::None }
+        Factor {
+            base,
+            repetition: Repetition::None,
+        }
     }
 }
 
 impl BaseFactor {
     pub fn literal(value: String) -> Self {
-        BaseFactor::Literal { value, insertion: false, mark: Mark::None }
+        BaseFactor::Literal {
+            value,
+            insertion: false,
+            mark: Mark::None,
+        }
     }
 
     pub fn insertion(value: String) -> Self {
-        BaseFactor::Literal { value, insertion: true, mark: Mark::None }
+        BaseFactor::Literal {
+            value,
+            insertion: true,
+            mark: Mark::None,
+        }
     }
 
     pub fn marked_literal(value: String, mark: Mark) -> Self {
-        BaseFactor::Literal { value, insertion: false, mark }
+        BaseFactor::Literal {
+            value,
+            insertion: false,
+            mark,
+        }
     }
 
     pub fn nonterminal(name: String) -> Self {
-        BaseFactor::Nonterminal { name, mark: Mark::None }
+        BaseFactor::Nonterminal {
+            name,
+            mark: Mark::None,
+        }
     }
 
     pub fn marked_nonterminal(name: String, mark: Mark) -> Self {
@@ -133,18 +155,32 @@ impl BaseFactor {
     }
 
     pub fn charclass(content: String) -> Self {
-        BaseFactor::CharClass { content, negated: false, mark: Mark::None }
+        BaseFactor::CharClass {
+            content,
+            negated: false,
+            mark: Mark::None,
+        }
     }
 
     pub fn negated_charclass(content: String) -> Self {
-        BaseFactor::CharClass { content, negated: true, mark: Mark::None }
+        BaseFactor::CharClass {
+            content,
+            negated: true,
+            mark: Mark::None,
+        }
     }
 
     pub fn marked_charclass(content: String, negated: bool, mark: Mark) -> Self {
-        BaseFactor::CharClass { content, negated, mark }
+        BaseFactor::CharClass {
+            content,
+            negated,
+            mark,
+        }
     }
 
     pub fn group(alternatives: Alternatives) -> Self {
-        BaseFactor::Group { alternatives: Box::new(alternatives) }
+        BaseFactor::Group {
+            alternatives: Box::new(alternatives),
+        }
     }
 }

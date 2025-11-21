@@ -1,55 +1,66 @@
 [package]
 name = "rustixml"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-authors = ["rustixml contributors"]
-description = "Invisible XML (iXML) parser implementation in Rust using LALR+GLR"
+authors = ["Alex Everitt <bigale@netzero.net>"]
+description = "Native iXML (Invisible XML) parser - 83.7% spec conformance, works in Rust and WebAssembly"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/bigale/rustixml"
-keywords = ["parser", "xml", "ixml", "invisible-xml", "glr"]
-categories = ["parsing", "text-processing"]
+homepage = "https://github.com/bigale/rustixml"
+documentation = "https://docs.rs/rustixml"
+keywords = ["parser", "xml", "ixml", "invisible-xml", "wasm"]
+categories = ["parsing", "text-processing", "wasm"]
+readme = "README.md"
+exclude = [
+    "ixml_tests/",
+    "target/",
+    ".github/",
+    ".git/",
+    "*.log",
+    "conformance_results*.txt"
+]
 
 [lib]
-crate-type = ["lib", "cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-rusty_lr = "3.34.0"
-unicode-normalization = "0.1"
-earlgrey = "0.3"
-roxmltree = "0.20"
 unicode-general-category = "1.0"
 
+# WASM-specific dependencies (only when building for wasm32)
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = { version = "0.1", optional = true }
+wee_alloc = { version = "0.4", optional = true }
+
 [dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[features]
+default = []
+console_error_panic_hook = ["dep:console_error_panic_hook"]
+wee_alloc = ["dep:wee_alloc"]
+
+[[bin]]
+name = "ixml"
+path = "src/bin/main.rs"
+doc = false
+
+[[bin]]
+name = "conformance_test"
+path = "src/bin/native_conformance_runner.rs"
+doc = false
 
 [[bin]]
 name = "rustixml"
-path = "src/bin/main.rs"
-required-features = []
-
-[[bin]]
-name = "test_runner"
-path = "test_runner.rs"
-required-features = []
-
-[[bin]]
-name = "minimal_star_test"
-path = "minimal_star_test.rs"
-required-features = []
-
-[[bin]]
-name = "star_test_debug"
-path = "star_test_debug.rs"
-required-features = []
-
-[[bin]]
-name = "test_negated_charclass"
-path = "src/bin/test_negated_charclass.rs"
-required-features = []
+path = "src/bin/ixml_cli.rs"
+doc = false
 
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
 
-[profile.dev]
-opt-level = 0
+[profile.release.package."*"]
+opt-level = "z"

@@ -1,0 +1,103 @@
+═══════════════════════════════════════════════════════════════════════════
+                    rustixml STRATEGY DECISION SUMMARY
+═══════════════════════════════════════════════════════════════════════════
+
+CURRENT STATUS: v0.2.0 - 83.7% conformance (41/49 correctness tests)
+
+═══════════════════════════════════════════════════════════════════════════
+OPTION 1: LALR+GLR (markup-blitz approach)
+═══════════════════════════════════════════════════════════════════════════
+
+What it means:
+  • Precomputed tables: Grammar → State machine BEFORE parsing
+  • LALR = Fast deterministic parsing (O(1) decisions)
+  • GLR = Handles ambiguity by exploring parallel parse stacks
+  
+Analogy: Like compiling the grammar to machine code vs interpreting it
+
+Pros:                          Cons:
+  ✓ Best performance           ✗ 6-12 month rewrite
+  ✓ Natural ambiguity          ✗ Complex implementation
+  ✓ 98-100% conformance        ✗ No good Rust libraries
+  ✓ Proven (markup-blitz)      ✗ Abstraction mismatch with iXML
+
+═══════════════════════════════════════════════════════════════════════════
+OPTION 2: Enhanced Native Parser (RECOMMENDED)
+═══════════════════════════════════════════════════════════════════════════
+
+Keep recursive descent, add optimizations:
+
+PRE-PROCESSING (before parsing):
+  1. Character class partitioning    [PARTIALLY DONE]
+  2. Left-recursion transformation   [TODO]
+  3. Nonterminal inlining            [TODO]
+
+RUNTIME (during parsing):
+  4. Memoization (packrat)           [TODO]
+  5. Ambiguity detection             [TODO]
+  6. Better error recovery           [PARTIAL]
+
+POST-PROCESSING (after parsing):
+  7. Tree normalization              [PARTIAL]
+
+Timeline:
+  v0.3.0 (1 month):  87-90% conformance
+  v0.4.0 (3 months): 92-95% conformance
+  v0.5.0 (4 months): 95%+ conformance
+
+Pros:                          Cons:
+  ✓ Incremental                ✗ May not reach 100%
+  ✓ Lower risk                 ✗ Complexity accumulates
+  ✓ Maintainable               ✗ Performance ceiling
+  ✓ 4 month timeline
+
+═══════════════════════════════════════════════════════════════════════════
+OPTION 3: Hybrid Model
+═══════════════════════════════════════════════════════════════════════════
+
+Use different parsers for different grammar types:
+  • Simple grammars → Fast recursive descent
+  • Recursive grammars → Memoized parsing
+  • Ambiguous grammars → Full path exploration
+
+Pros: Best of both worlds    Cons: Complex, 5 months, 95-97% target
+
+═══════════════════════════════════════════════════════════════════════════
+OPTION 4: Profiling-Driven Only
+═══════════════════════════════════════════════════════════════════════════
+
+Measure hotspots, optimize what matters:
+  cargo flamegraph --bin conformance_test
+  
+Pros: Evidence-based          Cons: Speed not correctness, 1 month
+
+═══════════════════════════════════════════════════════════════════════════
+RECOMMENDATION: Option 2 + 4 (Enhanced + Profiling)
+═══════════════════════════════════════════════════════════════════════════
+
+Why?
+  1. Proven architecture (recursive descent works)
+  2. Incremental improvement (ship v0.3, v0.4, v0.5)
+  3. Lower risk than complete rewrite
+  4. 90-95% is excellent for most users
+  5. Simpler code = easier contributions
+
+When to reconsider LALR+GLR?
+  • If 100% conformance becomes critical
+  • If mature Rust LALR+GLR library emerges
+  • If building production parser framework
+  • If performance becomes bottleneck (currently fine)
+
+═══════════════════════════════════════════════════════════════════════════
+DECISION: Ship v0.2.0 now, improve incrementally
+═══════════════════════════════════════════════════════════════════════════
+
+Current 83.7% conformance is:
+  ✓ Great for v0.2.0 release
+  ✓ Production-ready for common use cases
+  ✓ Honest about limitations (KNOWN_ISSUES.md)
+  ✓ Clear improvement path documented
+
+Perfect is the enemy of good. Ship now, improve later.
+
+═══════════════════════════════════════════════════════════════════════════

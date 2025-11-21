@@ -3,10 +3,8 @@
 //! This replaces the RustyLR GLR parser which had exponential performance issues
 //! with complex grammars containing circular references and repetitions.
 
+use crate::ast::{Alternatives, BaseFactor, Factor, IxmlGrammar, Mark, Repetition, Rule, Sequence};
 use crate::lexer::Token;
-use crate::ast::{
-    IxmlGrammar, Rule, Alternatives, Sequence, Factor, BaseFactor, Mark, Repetition
-};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -22,6 +20,7 @@ impl Parser {
         self.tokens.get(self.pos)
     }
 
+    #[allow(dead_code)]
     fn peek_ahead(&self, offset: usize) -> Option<&Token> {
         self.tokens.get(self.pos + offset)
     }
@@ -42,7 +41,8 @@ impl Parser {
     }
 
     fn matches(&self, expected: &Token) -> bool {
-        self.peek().map_or(false, |t| std::mem::discriminant(t) == std::mem::discriminant(expected))
+        self.peek()
+            .is_some_and(|t| std::mem::discriminant(t) == std::mem::discriminant(expected))
     }
 
     fn at_end(&self) -> bool {
@@ -51,10 +51,9 @@ impl Parser {
 
     // Helper to convert hex character code to actual character
     fn hex_to_char(hex: &str) -> Result<char, String> {
-        let code_point = u32::from_str_radix(hex, 16)
-            .map_err(|e| format!("Invalid hex value: {}", e))?;
-        char::from_u32(code_point)
-            .ok_or_else(|| format!("Invalid Unicode code point: #{}", hex))
+        let code_point =
+            u32::from_str_radix(hex, 16).map_err(|e| format!("Invalid hex value: {}", e))?;
+        char::from_u32(code_point).ok_or_else(|| format!("Invalid Unicode code point: #{}", hex))
     }
 
     // Grammar: Rule+
@@ -272,7 +271,10 @@ impl Parser {
             self.consume();
             match self.expect("character class after '~'")? {
                 Token::CharClass(s) => Ok(BaseFactor::negated_charclass(s)),
-                other => Err(format!("Expected character class after '~', got {:?}", other)),
+                other => Err(format!(
+                    "Expected character class after '~', got {:?}",
+                    other
+                )),
             }
         } else {
             // No mark prefix
@@ -319,11 +321,13 @@ pub fn parse_ixml_grammar(input: &str) -> Result<IxmlGrammar, String> {
 
     // Tokenize
     let mut lexer = Lexer::new(input);
-    let tokens = lexer.tokenize()
+    let tokens = lexer
+        .tokenize()
         .map_err(|e| format!("Lexer error: {}", e))?;
 
     // Filter out EOF token
-    let tokens: Vec<Token> = tokens.into_iter()
+    let tokens: Vec<Token> = tokens
+        .into_iter()
         .filter(|t| !matches!(t, Token::Eof))
         .collect();
 

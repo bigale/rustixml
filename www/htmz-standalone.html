@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>rustixml - HTMZ Standalone Demo</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            margin: 5px;
+        }
+
+        .htmz-badge {
+            background: rgba(255, 215, 0, 0.3);
+            border: 2px solid gold;
+        }
+
+        main {
+            padding: 30px;
+        }
+
+        .info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .htmz-info {
+            background: #fff9e6;
+            border-left: 4px solid #ffc107;
+        }
+
+        .editor-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .editor-section {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor-section label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        textarea {
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 14px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            resize: vertical;
+            min-height: 200px;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        button, .btn-link {
+            flex: 1;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+            text-decoration: none;
+            display: block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .output-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 300px;
+        }
+
+        .output-section h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .output-content {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            min-height: 250px;
+        }
+
+        .success {
+            color: #27ae60;
+        }
+
+        .error {
+            color: #e74c3c;
+        }
+
+        .examples {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .examples h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .example-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+        }
+
+        .example-btn {
+            padding: 10px 20px;
+            background: #f0f0f0;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .example-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        /* HTMZ-specific styles */
+        iframe[name="htmz"] {
+            display: none;
+        }
+
+        @media (max-width: 900px) {
+            .editor-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🦀 rustixml</h1>
+            <p class="subtitle">HTMZ Standalone Demo - No Server Required!</p>
+            <div>
+                <span class="badge">WASM: 50KB</span>
+                <span class="badge">83.7% conformance</span>
+                <span class="badge htmz-badge">⚡ HTMZ Pattern</span>
+            </div>
+        </header>
+
+        <main>
+            <div class="info">
+                <strong>ℹ️ About iXML:</strong> Invisible XML lets you define grammars that parse text into XML. 
+                Write simple grammar rules, parse any text format, get structured XML output!
+            </div>
+
+            <div class="info htmz-info">
+                <strong>⚡ HTMZ Standalone:</strong> This page works completely offline! No web server, no build step, 
+                no npm. Just HTML + WASM. Double-click to open, or save and run locally. Browser-as-server pattern.
+            </div>
+
+            <!-- Example selector form using HTMZ pattern -->
+            <form action="#editor-content" target="htmz" onsubmit="return loadExample(this)">
+                <div class="examples">
+                    <h3>📚 Load Example</h3>
+                    <div class="example-grid">
+                        <button type="submit" name="example" value="greeting" class="example-btn">Greeting</button>
+                        <button type="submit" name="example" value="csv" class="example-btn">CSV Parser</button>
+                        <button type="submit" name="example" value="json" class="example-btn">JSON Parser</button>
+                        <button type="submit" name="example" value="date" class="example-btn">Date Parser</button>
+                        <button type="submit" name="example" value="arithmetic" class="example-btn">Arithmetic</button>
+                    </div>
+                </div>
+            </form>
+
+            <div id="editor-content">
+                <div class="editor-grid">
+                    <div class="editor-section">
+                        <label>iXML Grammar</label>
+                        <textarea id="grammar">greeting: "Hello, ", name, "!".
+name: letter+.
+letter: ["A"-"Z"; "a"-"z"].</textarea>
+                    </div>
+
+                    <div class="editor-section">
+                        <label>Input Text</label>
+                        <textarea id="input">Hello, World!</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Parse form using HTMZ pattern -->
+            <form action="#output-display" target="htmz" onsubmit="return parseInput(this)">
+                <div class="button-row">
+                    <button type="submit" class="btn-primary">🚀 Parse</button>
+                    <button type="button" class="btn-secondary" onclick="clearAll()">🗑️ Clear</button>
+                </div>
+            </form>
+
+            <div class="output-section">
+                <h3>📤 Output</h3>
+                <div class="output-content" id="output-display">
+                    Click "Parse" to see the XML output...
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- HTMZ iframe for form handling -->
+    <iframe name="htmz" onload="htmzUpdate(this)"></iframe>
+
+    <script>
+        // Define HTMZ handler BEFORE the module script so it's available immediately
+        window.htmzUpdate = function(iframe) {
+            try {
+                const targetId = iframe.src.split('#')[1];
+                if (targetId && iframe.contentDocument) {
+                    const content = iframe.contentDocument.body.innerHTML;
+                    const target = document.getElementById(targetId);
+                    if (target) {
+                        target.innerHTML = content;
+                    }
+                }
+            } catch (e) {
+                console.log('HTMZ update (handled):', e.message);
+            }
+        };
+
+        // Example data
+        const examples = {
+            greeting: {
+                grammar: `greeting: "Hello, ", name, "!".
+name: letter+.
+letter: ["A"-"Z"; "a"-"z"].`,
+                input: "Hello, World!"
+            },
+            csv: {
+                grammar: `csv: row+newline.
+row: field, separator, field, separator, field.
+field: char*.
+separator: ",".
+-newline: #0A.
+-char: ~[","; #0A].`,
+                input: "name,age,city\nAlice,30,NYC\nBob,25,LA"
+            },
+            json: {
+                grammar: `value: string; number.
+string: '"', char*, '"'.
+number: digit+.
+-char: ~['"'].
+-digit: ["0"-"9"].`,
+                input: '"hello"'
+            },
+            date: {
+                grammar: `date: year, "-", month, "-", day.
+year: digit, digit, digit, digit.
+month: digit, digit.
+day: digit, digit.
+-digit: ["0"-"9"].`,
+                input: "2024-11-20"
+            },
+            arithmetic: {
+                grammar: `expr: term, ("+", term; "-", term)*.
+term: factor, ("*", factor)*.
+factor: number; "(", expr, ")".
+number: ["0"-"9"]+.`,
+                input: "2+3*4"
+            }
+        };
+
+        // Load example using HTMZ pattern
+        window.loadExample = function(form) {
+            const formData = new FormData(form);
+            const exampleName = formData.get('example');
+            const example = examples[exampleName];
+            
+            if (example) {
+                document.getElementById('grammar').value = example.grammar;
+                document.getElementById('input').value = example.input;
+            }
+            
+            return false; // Prevent actual form submission
+        };
+
+        // Parse input using HTMZ pattern
+        window.parseInput = function(form) {
+            if (!window.wasmReady || !window.wasmReady()) {
+                document.getElementById('output-display').innerHTML = 
+                    '<span class="error">⚠️ WASM not ready yet. Please wait...</span>';
+                return false;
+            }
+
+            const grammar = document.getElementById('grammar').value;
+            const input = document.getElementById('input').value;
+            const output = document.getElementById('output-display');
+
+            if (!grammar.trim()) {
+                output.innerHTML = '<span class="error">Please enter a grammar</span>';
+                return false;
+            }
+
+            if (!input.trim()) {
+                output.innerHTML = '<span class="error">Please enter input text</span>';
+                return false;
+            }
+
+            try {
+                const startTime = performance.now();
+                const result = window.parseIxml(grammar, input);
+                const endTime = performance.now();
+
+                if (result.success) {
+                    output.innerHTML = `<span class="success">✓ Parsed successfully in ${(endTime - startTime).toFixed(2)}ms</span>\n\n${escapeHtml(result.output)}`;
+                } else {
+                    output.innerHTML = `<span class="error">✗ Parse failed</span>\n\n${escapeHtml(result.error || 'Unknown error')}`;
+                }
+            } catch (err) {
+                output.innerHTML = `<span class="error">✗ Error: ${escapeHtml(err.message)}</span>`;
+            }
+
+            return false; // Prevent actual form submission
+        };
+
+        // Clear all inputs
+        window.clearAll = function() {
+            document.getElementById('grammar').value = '';
+            document.getElementById('input').value = '';
+            document.getElementById('output-display').textContent = 'Click "Parse" to see the XML output...';
+        };
+
+        // HTML escape utility
+        window.escapeHtml = function(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+    </script>
+
+    <script type="module">
+        // Import WASM module
+        // Note: This won't work with file:// protocol due to CORS
+        // Use a local server instead: python3 -m http.server 8080
+        import init, { parse_ixml } from '../pkg/rustixml.js';
+
+        // Initialize WASM
+        let wasmReady = false;
+        
+        async function initWasm() {
+            try {
+                await init();
+                wasmReady = true;
+                console.log('✅ WASM initialized - Ready for offline parsing!');
+                document.getElementById('output-display').textContent = 
+                    '✅ WASM loaded! Ready to parse. Click "Parse" button.';
+            } catch (err) {
+                console.error('Failed to initialize WASM:', err);
+                document.getElementById('output-display').innerHTML = 
+                    `<span class="error">⚠️ WASM initialization failed. Make sure pkg/ directory is present.\n\nError: ${err.message}</span>`;
+            }
+        }
+
+        // Store in global scope for HTMZ handlers
+        window.wasmReady = () => wasmReady;
+        window.parseIxml = parse_ixml;
+
+        // Initialize on load
+        initWasm();
+    </script>
+</body>
+</html>

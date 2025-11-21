@@ -41,11 +41,11 @@ fn find_test_cases() -> Vec<TestCase> {
                 let path = entry.path();
                 if path.extension().and_then(|s| s.to_str()) == Some("ixml") {
                     let name = path.file_stem().unwrap().to_string_lossy().to_string();
-                    
+
                     // Find corresponding .inp and .output.xml files
                     let input_file = category_path.join(format!("{}.inp", name));
                     let output_file = category_path.join(format!("{}.output.xml", name));
-                    
+
                     cases.push(TestCase {
                         name,
                         category: category.to_string(),
@@ -135,8 +135,16 @@ fn run_test(test: &TestCase) -> TestResult {
                     TestResult::Fail(format!(
                         "Output mismatch at position {}\nExpected: {}\nGot: {}",
                         diff_pos,
-                        expected_norm.chars().skip(diff_pos).take(50).collect::<String>(),
-                        result_norm.chars().skip(diff_pos).take(50).collect::<String>()
+                        expected_norm
+                            .chars()
+                            .skip(diff_pos)
+                            .take(50)
+                            .collect::<String>(),
+                        result_norm
+                            .chars()
+                            .skip(diff_pos)
+                            .take(50)
+                            .collect::<String>()
                     ))
                 }
             }
@@ -190,7 +198,7 @@ fn main() {
 
         results
             .entry(test.category.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push((test.name.clone(), result));
     }
 
@@ -215,7 +223,11 @@ fn main() {
     // Print overall summary
     println!("\n=== Overall Summary ===\n");
     println!("Total tests:     {}", test_cases.len());
-    println!("Passed:          {} ({:.1}%)", pass_count, (pass_count as f64 / test_cases.len() as f64) * 100.0);
+    println!(
+        "Passed:          {} ({:.1}%)",
+        pass_count,
+        (pass_count as f64 / test_cases.len() as f64) * 100.0
+    );
     println!("Failed:          {}", fail_count);
     println!("Grammar errors:  {}", grammar_error_count);
     println!("Input errors:    {}", input_error_count);

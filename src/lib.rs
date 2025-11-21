@@ -1,50 +1,54 @@
-//! rustixml: Invisible XML (iXML) parser implementation using LALR+GLR
+//! rustixml - Native iXML Parser
 //!
-//! This library provides a complete iXML parser that handles:
-//! - Insertion syntax (`+"text"`)
-//! - Unicode character classes
-//! - Optional spacing
-//! - Full iXML 1.0 specification
+//! A pure Rust implementation of the Invisible XML (iXML) specification.
+//! Works natively in Rust and compiles to WebAssembly for browser use.
 //!
-//! Built with RustyLR (LALR+GLR) to handle ambiguous grammars that
-//! cause traditional Earley parsers to fail.
+//! # Quick Start
+//!
+//! ```rust
+//! use rustixml::{parse_ixml_grammar, NativeParser};
+//!
+//! let grammar = r#"
+//!     greeting: "Hello, ", name, "!".
+//!     name: letter+.
+//!     letter: ["A"-"Z"; "a"-"z"].
+//! "#;
+//!
+//! let ast = parse_ixml_grammar(grammar).expect("Invalid grammar");
+//! let parser = NativeParser::new(ast);
+//!
+//! let xml = parser.parse("Hello, World!").expect("Parse failed");
+//! println!("{}", xml);
+//! ```
+//!
+//! # Features
+//!
+//! - 🚀 Fast native recursive descent parser
+//! - ✅ 83.7% conformance with iXML specification (41/49 tests)
+//! - 🌐 WebAssembly support for browser use
+//! - 📦 Single dependency (unicode-general-category)
+//! - 🔒 Pure safe Rust
 
-pub mod lexer;
-pub mod grammar;  // DEPRECATED - uses slow RustyLR GLR parser
-pub mod grammar_v2;  // DEPRECATED - uses slow RustyLR GLR parser
-pub mod grammar_ast;  // RECOMMENDED - uses fast handwritten parser
-pub mod grammar_parser;  // Handwritten recursive descent parser implementation (1.5M times faster!)
 pub mod ast;
-pub mod runtime_parser;  // Runtime parser using Earlgrey (Phase 3)
-pub mod testsuite_utils;  // Test suite infrastructure
-pub mod working_test;  // Phase 1 working grammar for comparison
+pub mod charclass;
+pub mod grammar_ast;
+pub mod grammar_parser;
+pub mod input_stream;
+pub mod lexer;
+pub mod native_parser;
+pub mod parse_context;
+pub mod xml_node;
 
-// Native interpreter modules (new implementation)
-pub mod input_stream;  // Input stream with backtracking
-pub mod parse_context;  // Parse state and error types
-pub mod native_parser;  // Direct iXML interpreter
+// WASM bindings (only when compiling for wasm32)
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
 
-pub use lexer::{Lexer, Token};
-
-#[deprecated(since = "0.2.0", note = "Use `grammar_ast::parse_ixml_grammar()` instead - 1.5M times faster!")]
-pub use grammar::parse_ixml_grammar as parse_ixml_grammar_old;
-
-#[deprecated(since = "0.2.0", note = "Use `grammar_ast::parse_ixml_grammar()` instead - 1.5M times faster!")]
-pub use grammar_v2::parse_ixml_grammar_v2;
-
+// Re-export main API
 pub use ast::IxmlGrammar;
+pub use grammar_ast::parse_ixml_grammar;
+pub use native_parser::NativeParser;
+pub use parse_context::{ParseContext, ParseError, ParseResult};
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_simple_literal() {
-        // Start with the simplest possible grammar
-        let grammar_str = r#"rule: "hello"."#;
-
-        // This test will guide our implementation
-        // let result = parse_ixml_grammar(grammar_str);
-        // assert!(result.is_ok());
-    }
-}
+// Re-export WASM API for convenience
+#[cfg(target_arch = "wasm32")]
+pub use wasm::*;
