@@ -63,8 +63,63 @@ Everything self-contained
 **To run:**
 ```bash
 python3 -m http.server 8080
-# Visit: http://localhost:8080/www/htmz-standalone.html
+# Visit: http://localhost:8080/docs/htmz-standalone.html
 ```
+
+### 3. `wasmz.html` - WASMZ Pattern (Recommended!)
+**When to use:** Maximum performance, reference implementation, production apps
+
+**Features:**
+- ✅ True `wasm://` URL routing (no JavaScript glue)
+- ✅ Template-returning functions (WASM returns HTML)
+- ✅ ~10x performance improvement over `htmz-standalone.html`
+- ✅ Zero network latency (everything client-side)
+- ✅ Progressive Enhancement (works without JS)
+- ⚠️ Note: Requires HTTP server and wasm-pack build
+
+**To run:**
+```bash
+python3 -m http.server 8080
+# Visit: http://localhost:8080/docs/wasmz.html
+```
+
+## 🎯 Which Should You Use?
+
+**Quick test/demo:** `htmz-standalone.html` - Works instantly, no build needed
+
+**Learning htmz:** `htmz-standalone.html` - Clearest example of htmz pattern
+
+**Production apps:** `wasmz.html` - Best performance, proper architecture
+
+**Button-driven UI:** `index.html` - Traditional approach, easier to understand
+
+## 📊 Comparison
+
+| Feature | index.html | htmz-standalone.html | wasmz.html |
+|---------|------------|---------------------|------------|
+| Performance | Medium | Good | **Excellent** |
+| Setup | Simple | Simple | Build required |
+| Code Size | Larger | Medium | **Smallest** |
+| Architecture | Traditional | htmz | **WASMZ** |
+| Network Calls | None | None | None |
+| Progressive Enhancement | ❌ | ✅ | ✅ |
+| Production Ready | ✅ | ✅ | ✅ |
+
+## 🔧 Testing
+
+All three versions work with the same WASM binary. To test:
+
+```bash
+# Build WASM (if not already done)
+wasm-pack build --target web --out-dir pkg
+
+# Start HTTP server
+python3 -m http.server 8080
+
+# Test each version:
+# http://localhost:8080/docs/index.html
+# http://localhost:8080/docs/htmz-standalone.html
+# http://localhost:8080/docs/wasmz.html
 
 ### 3. `wasmz.html` - WASMZ Pattern (Recommended!)
 **When to use:** Maximum performance, reference implementation, production apps

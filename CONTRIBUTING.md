@@ -88,7 +88,7 @@ wasm-pack build --target web --out-dir pkg
 
 # Test WASM in browser
 python3 -m http.server 8080
-# Visit: http://localhost:8080/www/wasmz.html
+# Visit: http://localhost:8080/docs/wasmz.html
 ```
 
 ### Submitting Changes
@@ -332,7 +332,7 @@ rustixml/
 - **iXML Specification**: [invisiblexml.org](https://invisiblexml.org)
 - **Rust Book**: [doc.rust-lang.org/book](https://doc.rust-lang.org/book/)
 - **WebAssembly**: [webassembly.org](https://webassembly.org)
-- **WASMZ Pattern**: See `www/WASMZ-PATTERN.md`
+- **WASMZ Pattern**: See `docs/WASMZ-PATTERN.md`
 
 ## 🤝 Code of Conduct
 

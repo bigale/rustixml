@@ -370,4 +370,4 @@ WASMZ in rustixml demonstrates:
 
 This is a **reference implementation** showing how parser/compiler tools can leverage WASMZ for maximum performance and minimal infrastructure.
 
-**Try it**: Open `www/wasmz.html` in a browser (via HTTP server) and experience native-speed parsing with zero backend!
+**Try it**: Open `docs/wasmz.html` in a browser (via HTTP server) and experience native-speed parsing with zero backend!

@@ -24,9 +24,9 @@ This release adds full WebAssembly support with three live demos and introduces 
 #### WebAssembly Support
 - **WASM compilation**: Full browser support via wasm-pack
 - **Three demo versions**:
-  - `www/index.html` - Standard demo with button-driven UI
-  - `www/htmz-standalone.html` - HTMZ pattern (form-driven, no backend)
-  - `www/wasmz.html` - **WASMZ pattern** with true wasm:// routing
+  - `docs/index.html` - Standard demo with button-driven UI
+  - `docs/htmz-standalone.html` - HTMZ pattern (form-driven, no backend)
+  - `docs/wasmz.html` - **WASMZ pattern** with true wasm:// routing
 - **WASM API**:
   - `parse_ixml(grammar, input)` - One-shot parse function
   - `IxmlParser::new(grammar)` - Reusable parser instance
@@ -40,12 +40,12 @@ This release adds full WebAssembly support with three live demos and introduces 
 - **Template-returning functions**: WASM returns HTML, not just data
 - **Zero network latency**: All execution client-side
 - **Reference implementation**: First parser tool with WASMZ pattern
-- **Documentation**: Comprehensive technical documentation in `www/WASMZ-PATTERN.md`
+- **Documentation**: Comprehensive technical documentation in `docs/WASMZ-PATTERN.md`
 
 #### Documentation
-- `www/WASMZ-PATTERN.md` - Full WASMZ technical documentation
-- `www/HTMZ-README.md` - Comparison of all three demo versions
-- `www/FILE-PROTOCOL-LIMITATION.md` - Explains browser CORS restrictions
+- `docs/WASMZ-PATTERN.md` - Full WASMZ technical documentation
+- `docs/HTMZ-README.md` - Comparison of all three demo versions
+- `docs/FILE-PROTOCOL-LIMITATION.md` - Explains browser CORS restrictions
 - Updated README with demo links and WASM usage examples
 
 #### Examples
@@ -200,4 +200,4 @@ wasm-pack build --target web --out-dir pkg
 - [Crates.io](https://crates.io/crates/rustixml)
 - [Documentation](https://docs.rs/rustixml)
 - [iXML Specification](https://invisiblexml.org)
-- [WASMZ Pattern](https://github.com/bigale/rustixml/blob/main/www/WASMZ-PATTERN.md)
+- [WASMZ Pattern](https://github.com/bigale/rustixml/blob/main/docs/WASMZ-PATTERN.md)

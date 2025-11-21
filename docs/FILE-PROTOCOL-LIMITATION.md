@@ -108,7 +108,7 @@ In HTMZ context, "standalone" means:
 
 ## Documentation Updates
 
-Updated `www/HTMZ-README.md` to clarify:
+Updated `docs/HTMZ-README.md` to clarify:
 - HTTP server is minimal and logic-free
 - Browser CORS limitations explained
 - Still demonstrates HTMZ pattern effectively
@@ -117,7 +117,7 @@ Updated `www/HTMZ-README.md` to clarify:
 ## Future Consideration
 
 If someone needs a truly file:// compatible version, we can create:
-- `www/htmz-inline.html` - Base64 inlined WASM (250KB single file)
+- `docs/htmz-inline.html` - Base64 inlined WASM (250KB single file)
 - Trade size for convenience
 - Document as experimental/alternative approach
 
