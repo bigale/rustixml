@@ -304,7 +304,7 @@ letter: ["A"-"Z"; "a"-"z"].`,
                 grammar: `csv: row+.
 row: field++separator, newline.
 field: char*.
-@separator: ",".
+-separator: ",".
 -char: ~[","; #0A].
 -newline: #0A.`,
                 input: `name,age,city
