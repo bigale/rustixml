@@ -302,7 +302,7 @@ letter: ["A"-"Z"; "a"-"z"].`,
             },
             csv: {
                 grammar: `csv: row+.
-row: field+separator, field, newline.
+row: field++separator, newline.
 field: char*.
 @separator: ",".
 -char: ~[","; #0A].
@@ -312,11 +312,11 @@ Alice,30,NYC
 Bob,25,LA`
             },
             json: {
-                grammar: `value: string; number; object; array.
+                grammar: `value: string | number | object | array.
 string: '"', char*, '"'.
 number: digit+.
-object: '{', pair+comma, '}'.
-array: '[', value+comma, ']'.
+object: '{', pair++comma, '}'.
+array: '[', value++comma, ']'.
 pair: string, ':', value.
 @comma: ','.
 -char: ~['"'].
