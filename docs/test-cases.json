@@ -1,0 +1,332 @@
+{
+  "version": "0.2.0",
+  "description": "Passing test cases from the iXML test suite",
+  "categories": {
+    "Basic Examples": [
+      {
+        "name": "Aaa",
+        "id": "aaa",
+        "grammar": "{Input is \"a a a\"; output is two spaces}\ndata: a, \" \", a, \" \", a.\n-a: -\"a\".",
+        "input": "a a a",
+        "description": "Aaa"
+      },
+      {
+        "name": "Empty Group",
+        "id": "empty-group",
+        "grammar": "a: b, (), c.\nb: \"b\".\nc: \"c\".",
+        "input": "bc",
+        "description": "Empty Group"
+      },
+      {
+        "name": "Lf",
+        "id": "lf",
+        "grammar": "input: line++lf.\nline: ~[#a | #d]*.\nlf: -#a | -#d, -#a.",
+        "input": "Now is the time\nFor all good people\nTo have fun.",
+        "description": "Lf"
+      },
+      {
+        "name": "Tab",
+        "id": "tab",
+        "grammar": "data: s?, word. \n-s: [#20; #9]+.\nword: [L]+.",
+        "input": "abc",
+        "description": "Tab"
+      },
+      {
+        "name": "Test",
+        "id": "test",
+        "grammar": "test: foo, bar.\nfoo: -\".\".\nbar: \".\".",
+        "input": "..",
+        "description": "Test"
+      }
+    ],
+    "Arithmetic & Math": [
+      {
+        "name": "Arith",
+        "id": "arith",
+        "grammar": "expr: open, -arith, close.\nopen: \"(\".\nclose: \")\".\narith: left, -op, right.\nop: @plus.\nplus: \"+\".\nleft: \"a\".\nright:\"b\".",
+        "input": "(a+b)",
+        "description": "Parenthesized arithmetic expression with operators"
+      },
+      {
+        "name": "Expr",
+        "id": "expr",
+        "grammar": "expression: expr.\n-expr: term; sum; diff.\nsum: expr, -\"+\", term.\ndiff: expr, \"-\", term.\n-term: factor; prod; div.\nprod: term, -\"×\", factor.\ndiv: term, \"÷\", factor.\n-factor: id; number; bracketed.\nbracketed: -\"(\", expr, -\")\".\nid: @name.\nname: letter+.\nnumber: @value.\nvalue: digit+.\n-letter: [\"a\"-\"z\"].\n-digit: [\"0\"-\"9\"].",
+        "input": "pi+(10×b)",
+        "description": "Expression with precedence"
+      },
+      {
+        "name": "Expr1",
+        "id": "expr1",
+        "grammar": "expression: expr.\n-expr: term++plusop.\n@plusop: \"+\"; \"-\".\nterm: -factor; factor, mulop, factor++mulop.\n@mulop: \"*\"; \"/\".\nfactor: id; number; bracketed.\nbracketed: -\"(\", expr, -\")\".\nid: @name.\nname: letter+.\nnumber: @value.\nvalue: digit+.\n-letter: [\"a\"-\"z\"].\n-digit: [\"0\"-\"9\"].",
+        "input": "1+2+3*4+5",
+        "description": "Expr1"
+      },
+      {
+        "name": "Expr2",
+        "id": "expr2",
+        "grammar": "expression: expr. \n-expr: term; sum; diff.\nsum: term, \"+\", term++\"+\".\ndiff: term, \"-\", term++\"-\".\n-term: factor; prod; div.\nprod: factor, \"×\", factor++\"×\".\ndiv: factor, \"÷\", factor++\"÷\".\n-factor: name; number; \"(\", ^expr, \")\".\nname: [\"a\"-\"z\"]+.\nnumber: [\"0\"-\"9\"]+.",
+        "input": "234×(bbbb+cccc+dddd)×12",
+        "description": "Expr2"
+      },
+      {
+        "name": "Expr3",
+        "id": "expr3",
+        "grammar": "expression: expr. \n-expr: term; sum; diff.\nsum: term, \"+\", term++\"+\".\ndiff: term, \"-\", term++\"-\".\n-term: factor; prod; div.\nprod: factor, \"×\", factor++\"×\".\ndiv: factor, \"÷\", factor++\"÷\".\n-factor: name; number; bracketed.\nbracketed: \"(\", expr, \")\".\nname: [\"a\"-\"z\"]+.\nnumber: [\"0\"-\"9\"]+.",
+        "input": "234×(bbbb+cccc+dddd)×12",
+        "description": "Expr3"
+      },
+      {
+        "name": "Expr4",
+        "id": "expr4",
+        "grammar": "expression: expr. \n-expr: term; sum.\nsum: term, \"+\", term++\"+\".\n-term: factor; prod.\nprod: factor, \"×\", factor++\"×\".\n-factor: id; number; \"(\", expr, \")\".\nid: [\"a\"-\"z\"]+.\nnumber: [\"0\"-\"9\"]+, (\".\", [\"0\"-\"9\"]+)?.",
+        "input": "pi+(10×a×b)+3.14",
+        "description": "Expr4"
+      },
+      {
+        "name": "Expr5",
+        "id": "expr5",
+        "grammar": "expression: expr.\n-expr: term; sum; diff.\nsum: expr, -\"+\", term.\ndiff: expr, \"-\", term.\n-term: factor; prod; div.\nprod: term, -\"×\", factor.\ndiv: term, \"÷\", factor.\n-factor: id; number; bracketed.\nbracketed: -\"(\", expr, -\")\".\nid: @name.\nname: letter+.\nnumber: digit+.\n-letter: [\"a\"-\"z\"].\n-digit: [\"0\"-\"9\"].",
+        "input": "(3)",
+        "description": "Expr5"
+      },
+      {
+        "name": "Expr6",
+        "id": "expr6",
+        "grammar": "expression: expr.\n-expr: term; sum; diff.\nsum: term, \"+\", term++\"+\".\ndiff: term, \"-\", term++\"-\".\n-term: power; prod; div.\nprod: power, \"×\", power++\"×\".\ndiv: power, \"÷\", power++\"÷\".\n-power: fact; exp.\nexp: fact, \"^\", fact++\"^\".\n-fact: id; number; bracketed.\nbracketed: \"(\", exp, \")\".\nid: letter+.\nnumber: digit+.\n-letter: [\"a\"-\"z\"].\n-digit: ['0'-'9'].",
+        "input": "a^2+b×3+c^2",
+        "description": "Expr6"
+      },
+      {
+        "name": "Hash",
+        "id": "hash",
+        "grammar": "hashes: hash**S, \".\".\nhash: \"#\", d6.\n@d6: d, (d, (d, (d, (d, d?)?)?)?)?.\n-d: [\"0\"-\"9\"].\n-S: \" \"+.",
+        "input": "#1 #12 #123 #1234 #12345 #123456 #1.",
+        "description": "Hash"
+      },
+      {
+        "name": "Poly",
+        "id": "poly",
+        "grammar": "polynomial: f, (plus; minus)*. {4x2+3x-2}\nplus: -\"+\", -f.\nminus: -\"-\", -f.\n@power: exp.\n@constant: @n.\n-f: @n, -\"x\", @power?; constant.\nn: [\"0\"-\"9\"]+.\nexp: (\"⁰\"; \"¹\"; \"²\";\"³\"; \"⁴\"; \"⁵\"; \"⁶\"; \"⁷\"; \"⁸\"; \"⁹\")+.",
+        "input": "44x⁷⁸⁹+13x²-20x+1",
+        "description": "Poly"
+      }
+    ],
+    "Data Formats": [
+      {
+        "name": "Diary",
+        "id": "diary",
+        "grammar": "diary: entry+.\nentry: date, para.\ndate: day, s, month, s,  year, nl.\nday: digit, digit?.\n-digit:[\"0\"-\"9\"].\nmonth: \"January\"; \"February\"; \"March\"; \"April\"; \"May\"; \"June\";\n       \"July\"; \"August\"; \"September\"; \"October\"; \"November\"; \"December\".\nyear: digit, digit, digit, digit.\n\npara: word++s, s?, blank.\n-blank: nl, nl.\n-word: (letter; punctuation)+.\n-letter: [L].\n-punctuation: [\".;:,'?!\"].\n-s: \" \"+.\n-nl: -#a | -#d, -#a .",
+        "input": "24 December 2021\nPanic shopping! Panic packing! Will we make it before midnight?\n\n25 December 2021\nFood! Presents!\n\n26 December 2021\nGroan.",
+        "description": "Diary entry with date parsing"
+      },
+      {
+        "name": "Diary2",
+        "id": "diary2",
+        "grammar": "diary: entry+.\nentry: date, para.\ndate: day, s, month, s,  year, nl.\nday: digit, digit?.\n-digit:[\"0\"-\"9\"].\nmonth: \"January\"; \"February\"; \"March\"; \"April\"; \"May\"; \"June\";\n       \"July\"; \"August\"; \"September\"; \"October\"; \"November\"; \"December\".\nyear: digit, digit, digit, digit.\n\npara: char*, blank.\n-blank: nl, nl.\n-char: letter; punctuation; s.\n-letter: [L].\n-punctuation: [\".;:,'?!\"].\n-s: \" \".\n-nl: -#a | -#d, -#a .",
+        "input": "24 December 2021\nPanic shopping! Panic packing! Will we make it before midnight?\n\n25 December 2021\nFood! Presents!\n\n26 December 2021\nGroan.",
+        "description": "Diary2"
+      },
+      {
+        "name": "Diary3",
+        "id": "diary3",
+        "grammar": "diary: entry+.\nentry: date, para.\ndate: day, s, month, s,  year, nl.\n-s: -\" \"+.\nday: digit, digit?.\n-digit:[\"0\"-\"9\"].\nmonth: \"January\"; \"February\"; \"March\"; \"April\"; \"May\"; \"June\";\n       \"July\"; \"August\"; \"September\"; \"October\"; \"November\"; \"December\".\nyear: digit, digit, digit, digit.\n\npara: char*, blank.\n-blank: nl, nl.\n-char: ~[#a].\n-nl: -#a | -#d, -#a .",
+        "input": "24 December 2021\nPanic shopping! Panic packing! Will we make it before midnight?\n\n25 December 2021\nFood! Presents!\n\n26 December 2021\nGroan.",
+        "description": "Diary3"
+      },
+      {
+        "name": "Json",
+        "id": "json",
+        "grammar": "json: element.\nelement: value.\n-value: string;\n        number;\n        object;\n        array;\n        \"true\", S;\n        \"false\", S;\n        \"null\", S.\nobject: \"{\", S, members, \"}\", S.\n-members: member**(\",\", S).\nmember: @string, S, \":\", S, element.\narray: \"[\", S, elements, \"]\", S.\nelements: element**(\",\", S).\nstring: -'\"', character*, -'\"'.\n-character: ~['\"\\'; #0-#19];\n           \"\\\", escape.\nescape: ['\"\\/bfnrt'];\n       \"u\", hex, hex, hex, hex.\nhex: digit; [\"A\"-\"F\"; \"a\"-\"f\"].\nnumber: int, frac, exp.\nint: \"-\"?, digit;\n     \"-\"?, onenine, digit*.\ndigit: [\"0\"-\"9\"].\nonenine: [\"1\"-\"9\"].\nfrac: (\".\", digit+)?.\nexp: ([\"eE\"], sign, digit+)?.\nsign: [\"+-\"]?.\n-S: -[#9; #a; #d; \" \"]*.",
+        "input": "{\"menu\": {\n  \"id\": \"file\",\n  \"value\": \"File\",\n  \"popup\": {\n    \"menuitem\": [\n      {\"value\": \"New\", \"onclick\": \"CreateNewDoc()\"},\n      {\"value\": \"Open\", \"onclick\": \"OpenDoc()\"},\n      {\"value\": \"Close\", \"onclick\": \"CloseDoc()\"}\n    ]\n  }\n },\n \"number\": -0.0e+00,\n \"string\": \"\\uffff\",\n \"bool\": true,\n \"also\": false,\n \"no\": null\n}",
+        "description": "Simple JSON parser"
+      },
+      {
+        "name": "Json1",
+        "id": "json1",
+        "grammar": "json: S, object.\nobject: \"{\", S, members, \"}\", S.\n-members: pair**(\",\", S).\npair: @string, S, \":\", S, value.\narray: \"[\", S, value**(\",\", S), \"]\", S.\n-value: string, S; number, S; object; array; \"true\", S; \"false\", S; \"null\", S.\nstring: -\"\"\"\", char*, -\"\"\"\".\n-char: ~['\"'; \"\\\" {;[#0-#1F];}]; '\\', ('\"'; \"\\\"; \"/\"; \"b\"; \"f\"; \"n\"; \"r\"; \"t\"; \"u\", hexdigits).\nnumber: \"-\"?, int, frac?, exp?.\n-int: \"0\"; digit19, digit*.\n-frac: \".\", digit+.\n-exp: (\"e\"; \"E\"), sign?, digit+.\n-sign: \"+\"; \"-\".\n-S: \" \"*.\n-digit: [\"0\"-\"9\"].\n-digit19: [\"1\"-\"9\"].\n-hexdigits: hexdigit, hexdigit, hexdigit, hexdigit.\n-hexdigit: digit; [\"a\"-\"f\"]; [\"A\"-\"F\"].",
+        "input": "{\"name\": \"pi\", \"value\": 3.145926}",
+        "description": "JSON with nested objects"
+      },
+      {
+        "name": "Vcard",
+        "id": "vcard",
+        "grammar": "card: -\"BEGIN:\", name, eoln, property+, -\"END:\", endname, eoln.\nproperty: name, parameters, -\":\", attribute++-\";\", -eoln.\nparameters: (-\";\", parameter)*.\nparameter: name, -\"=\", pvalue.\n@pvalue: ~[\";:\"; #a; #d]+.\nattribute: value.\n@value: achar*.\n-achar: ~[\"#;\"; #a; #d].\n@name: [\"a\"-\"z\"; \"A\"-\"Z\"]+.\n@endname: name.\n-eoln: -#a | -#d, -#a.",
+        "input": "BEGIN:VCARD\nVERSION:3.0\nN:Lastname;Surname\nFN:Displayname\nORG:EVenX\nURL:http://www.evenx.com/\nEMAIL:info@evenx.com\nTEL;TYPE=voice,work,pref:+49 1234 56788\nADR;TYPE=intl,work,postal,parcel:;;Wallstr. 1;Berlin;;12345;Germany\nEND:VCARD",
+        "description": "vCard contact format"
+      },
+      {
+        "name": "Xml",
+        "id": "xml",
+        "grammar": "xml: element.\nelement: -\"<\", name, (\" \"+, attribute)*, (-\">\", content, -\"</\", close, -\">\"; -\"/>\").\n@name: [\"a\"-\"z\"; \"A\"-\"Z\"]+.\n@close: name.\nattribute: name, -\"=\", value.\n@value: -'\"', dchar*, -'\"'; -\"'\", schar*, -\"'\".\ncontent: (cchar; element)*.\n-dchar: ~['\"'].\n-schar: ~[\"'\"].\n-cchar: ~[\"<\"].",
+        "input": "<test att=\"abc\" class=\"test\">\n  Now is the <em>time</em> for stuff.\n</test>",
+        "description": "Basic XML parser"
+      },
+      {
+        "name": "Xml1",
+        "id": "xml1",
+        "grammar": "xml: element.\nelement: -\"<\", name, (-\" \"+, attribute)*, (-\">\", content, -\"</\", close, -\">\"; -\"/>\").\n@name: [\"a\"-\"z\"; \"A\"-\"Z\"]+.\n@close: name.\nattribute: name, -\"=\", value.\n@value: -'\"', dchar*, -'\"'; -\"'\", schar*, -\"'\".\ncontent: (cchar; element)*.\n-dchar: ~['\"'; \"<\"].\n-schar: ~[\"'\"; \"<\"].\n-cchar: ~[\"<\"].",
+        "input": "<test lang=\"en\" class=\"test\">\n  This <em>is</em> a test.\n</test>",
+        "description": "XML with attributes"
+      }
+    ],
+    "Email & Addresses": [
+      {
+        "name": "Address",
+        "id": "address",
+        "grammar": "address: person, lf, street, lf, postcode, city, lf, country, lf; \n         person, lf, street, lf, city, postcode, lf, country, lf.\nperson: (title, S?)?, (initials; given, S), surname, S?.\ntitle: \"Mr.\"; \"Mrs.\"; \"Dr.\"; \"Ms.\".\ninitials: initial+.\ninitial: LETTER, \".\", S?.\nsurname: name.\ngiven: name.\n-name: LETTER, letters.\nstreet: no, S?, streetname; streetname, S?, no, S?.\nstreetname: name, S; name, S, name.\ncity: name, S; name, S, name, S.\ncountry: name, S?; name, S, name, S?.\npostcode: digits, S, LETTER, LETTER, S?; \n          LETTER, LETTER, digits, S, digit, LETTER, LETTER, S?.\nno: digits.\n-LETTER: [\"A\"-\"Z\"].\n-letters: [\"a\"-\"z\"]*.\n-digit: [\"0\"-\"9\"].\n-digits: [\"0\"-\"9\"]+.\n-S: \" \"+.\n-lf: -#a | -#d, -#a .",
+        "input": "Steven Pemberton\n21 Sandridge Road\nSt Albans AL1 4BY\nUnited Kingdom",
+        "description": "Postal address parsing"
+      },
+      {
+        "name": "Email",
+        "id": "email",
+        "grammar": "email: user, -\"@\", host.\n@user: atom++\".\".\n-atom: char+.\n@host: domain++\".\".\n-domain: word++\"-\".\n-word: letgit+.\n-letgit: [\"A\"-\"Z\"; \"a\"-\"z\"; \"0\"-\"9\"].\n-char:   letgit; [\"!#$%&'*+-/=?^_`{|}~\"].",
+        "input": "~my_mail+{nospam}$?@sub-domain.example.info",
+        "description": "Email address validation with complex character classes"
+      }
+    ],
+    "Text Processing": [
+      {
+        "name": "Attribute Value",
+        "id": "attribute-value",
+        "grammar": "test: a, \".\".\n@a: ~[\".\"]*.",
+        "input": "\"'<>/&.",
+        "description": "Attribute Value"
+      },
+      {
+        "name": "Element Content",
+        "id": "element-content",
+        "grammar": "content: -a, -\".\".\na: ~[\".\"]*.",
+        "input": "\"'<>/&.",
+        "description": "Element Content"
+      },
+      {
+        "name": "Marked",
+        "id": "marked",
+        "grammar": "a: @b; \"!\", c.\nb: c.\nc: \"d\".",
+        "input": "!d",
+        "description": "Marked"
+      },
+      {
+        "name": "Nested Comment",
+        "id": "nested-comment",
+        "grammar": "a: b, c.\nb: \"b\". {here is a comment\n{with a nested comment\nb: \"c\".\n}}\nc: .",
+        "input": "b",
+        "description": "Nested Comment"
+      },
+      {
+        "name": "Para Test",
+        "id": "para-test",
+        "grammar": "doc: section+.\nsection: para, lf.\npara: line+.\nline: ~[#a | #d]+, lf.\n-lf: -#a | -#d, -#a.",
+        "input": "AB December 2021\nPara entry.\n\nHere is annother section\nSee.\n\nAnd another.\nThe end.",
+        "description": "Para Test"
+      },
+      {
+        "name": "Range Comments",
+        "id": "range-comments",
+        "grammar": "name: letter*.\nletter: [{comment}\"a\"{comment}-{comment}\"z\"{comment}].",
+        "input": "name",
+        "description": "Range Comments"
+      },
+      {
+        "name": "String",
+        "id": "string",
+        "grammar": "S : @able, baker, @charlie.\nable: string.\nbaker: string.\ncharlie: string.\nstring: [\"abc\"]*, \".\".",
+        "input": "aaa.bbb.ccc.",
+        "description": "String literal parsing"
+      }
+    ],
+    "Character Classes": [
+      {
+        "name": "Hex",
+        "id": "hex",
+        "grammar": "hex: \"a\", [#20], \"b\".",
+        "input": "a b",
+        "description": "Hexadecimal number parsing"
+      },
+      {
+        "name": "Hex1",
+        "id": "hex1",
+        "grammar": "hex: \"a\", #20, \"b\".",
+        "input": "a b",
+        "description": "Hex1"
+      },
+      {
+        "name": "Hex3",
+        "id": "hex3",
+        "grammar": "hex: \"a\", [#1-#7e], \"b\".",
+        "input": "a!b",
+        "description": "Hex3"
+      },
+      {
+        "name": "Range",
+        "id": "range",
+        "grammar": "data: range1, range2, -\".\".\nrange1: [\"0\"-\"9\"].\nrange2: [#0-#9].",
+        "input": "5\t.",
+        "description": "Character range matching"
+      },
+      {
+        "name": "Ranges",
+        "id": "ranges",
+        "grammar": "test: other, digit, other, cap, other, lc, other, lf?.\nother: ~[#a; #d; #30-#39; #41-#5A; #61-#7A]+.\ncap: [#41-#5A]+.\nlc: [#61-#7A]+.\ndigit: [#30-#39]+.\n-lf: -#a | -#d, -#a.\n{\n0123456789abcdef\n !\"#$%&'()*+,-./\n0123456789:;<=>?\n@ABCDEFGHIJKLMNO\nPQRSTUVWXYZ[\\]^_\n`abcdefghijklmno\npqrstuvwxyz{|}~\n}",
+        "input": "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+        "description": "Ranges"
+      },
+      {
+        "name": "Ranges1",
+        "id": "ranges1",
+        "grammar": "chars: punctuation, nonpunct?; upper, nonupper?; lower, nonlower?; digit, nondigit?.\n-nonpunct: upper, nonupper?; lower, nonlower?; digit, nondigit?.\n-nonupper: punctuation, nonpunct?; lower, nonlower?; digit, nondigit?.\n-nonlower: punctuation, nonpunct?; upper, nonupper?; digit, nondigit?.\n-nondigit: punctuation, nonpunct?; upper, nonupper?; lower, nonlower?.\n\nupper: [#41-#5A]+.\nlower: [#61-#7A]+.\ndigit: [#30-#39]+.\npunctuation: ~[#a; #d; #30-#39; #41-#5A; #61-#7A]+.\n{-lf: -#a.}\n{\n0123456789abcdef\n !\"#$%&'()*+,-./\n0123456789:;<=>?\n@ABCDEFGHIJKLMNO\nPQRSTUVWXYZ[\\]^_\n`abcdefghijklmno\npqrstuvwxyz{|}~\n}",
+        "input": "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+        "description": "Ranges1"
+      },
+      {
+        "name": "Unicode Classes",
+        "id": "unicode-classes",
+        "grammar": "{ Unicode classes test}\n{Each input line starts with the one or two letter name of the class it is testing, a space, and a list of unicode characters that are in that class.\n\nThe output is an element of that classname for each line of input, with the characters as content, with the exception of the control characters, for which the element content is a \".\" for each character in the input.}\n\nclasses: line+.\n-line: ( C; Cc; Cf; Cn; Co; Cs; L; LC; Ll; Lm; Lo; Lt; Lu; M; Mc; Me; Mn; N; Nd; Nl; No; P; Pc; Pd; Pe; Pf; Pi; Po; Ps; S; Sc; Sk; Sm; So; Z; Zl; Zp; Zs), newline.\n-newline: (-#a; -#d)+.\n\n  C: -\"C \", (-[C], +\".\")*.\n  L: -\"L \", [L]*.\n  M: -\"M \", [M]*.\n  N: -\"N \", [N]*.\n  P: -\"P \", [P]*.\n  S: -\"S \", [S]*.\n  Z: -\"Z \", [Z]*.\n  \n  Cc: -\"Cc \", (-[Cc], +\".\")*.\n  Cf: -\"Cf \", (-[Cf], +\".\")*.\n  Cn: -\"Cn \", (-[Cn], +\".\")*.\n  Co: -\"Co \", (-[Co], +\".\")*.\n  Cs: -\"Cs \", (-[Cs], +\".\")*.\n  LC: -\"LC \", [LC]*.\n  Ll: -\"Ll \", [Ll]*.\n  Lm: -\"Lm \", [Lm]*.\n  Lo: -\"Lo \", [Lo]*.\n  Lt: -\"Lt \", [Lt]*.\n  Lu: -\"Lu \", [Lu]*.\n  Mc: -\"Mc \", [Mc]*.\n  Me: -\"Me \", [Me]*.\n  Mn: -\"Mn \", [Mn]*.\n  Nd: -\"Nd \", [Nd]*.\n  Nl: -\"Nl \", [Nl]*.\n  No: -\"No \", [No]*.\n  Pc: -\"Pc \", [Pc]*.\n  Pd: -\"Pd \", [Pd]*.\n  Pe: -\"Pe \", [Pe]*.\n  Pf: -\"Pf \", [Pf]*.\n  Pi: -\"Pi \", [Pi]*.\n  Po: -\"Po \", [Po]*.\n  Ps: -\"Ps \", [Ps]*.\n  Sc: -\"Sc \", [Sc]*.\n  Sk: -\"Sk \", [Sk]*.\n  Sm: -\"Sm \", [Sm]*.\n  So: -\"So \", [So]*.\n  Zl: -\"Zl \", [Zl]*.\n  Zp: -\"Zp \", [Zp]*.\n  Zs: -\"Zs \", [Zs]*.",
+        "input": "Lm ʰ\nLo ªאتܐޓߊࠀࡀऄঅਅઅଅஅఅಅഅඅกກༀကᄀሀᐁᚁᚠᜀᜠᝀᝠកᠠᢰᤁᥐᦀᨀᨠᬅᮃᯀᰀᱚᳩℵⴰⶀぁァㄅ智取威虎山\nLl aàǆµßαϐюաდᏸℊℹⰰⲁａ𐐨𐓘𐖗𐳀𑣁ðþ\nLu AÀǄ\nLt ǅ\nLC aàǆAÀǄǅΘϢЮԱႠᎠℂÅⰁⲀＡ𝐀𝓐𝕲\nL aàǆAÀǄǅʰªאتܐޓߊࠀࡀऄঅਅઅଅஅఅಅഅඅกກༀကᄀሀᐁᚁᚠᜀᜠᝀᝠកᠠᢰᤁᥐᦀᨀᨠᬅᮃᯀᰀᱚᳩℵⴰⶀぁァㄅ智取威虎山\nMc ऻ\nMe ҈\nMn ̀\nM ऻ҈\nNd 0٩۲߀०০੦૦\nNl Ⅻⅻ\nNo ²½\nN 0٩۲߀०০੦૦Ⅻⅻ²½\nPc _‿⁀⁔︳︴﹍﹎﹏＿\nPd -\nPe )]}\nPf »’”›\nPi «‘‛“\nPo !\"#%&'*,./:;?@\\¡§¶·\nPs ([{\nP _‿⁀⁔︳︴﹍﹎﹏＿-)]}»’”›«‘‛“!\"#%&'*,./:;?@\\¡§¶·([{\nSc $¢£¤¥€\nSk ^`¨¯´\nSm +<=>|~¬→\nSo ¦©®°\nS $¢£¤¥€^`¨¯´+<=>|~¬→¦©®°\nZl  \nZp  \nZs   \nZ     \nCo \nCc \u0007\b\nCf ­\nCs \nCn ͸\nC \u0007\b­͸",
+        "description": "Unicode character class support"
+      },
+      {
+        "name": "Unicode Range",
+        "id": "unicode-range",
+        "grammar": "latin: [\"À\"-\"ž\"]+.",
+        "input": "ŤĤıŞıŞÀŤėšť",
+        "description": "Unicode Range"
+      },
+      {
+        "name": "Unicode Range1",
+        "id": "unicode-range1",
+        "grammar": "chars: [#1-\"÷\"]+.",
+        "input": "¡¢£¤¥¦§¨©«¬®¯°±²³´µ¶·¸¹»¼½¾¿×÷",
+        "description": "Unicode Range1"
+      },
+      {
+        "name": "Unicode Range2",
+        "id": "unicode-range2",
+        "grammar": "chars: [#60-#70]+.",
+        "input": "abc",
+        "description": "Unicode Range2"
+      }
+    ],
+    "Programming Languages": [
+      {
+        "name": "Program",
+        "id": "program",
+        "grammar": "program: block.\nblock: \"{\", S, statement**(\";\", S), \"}\", S.\nstatement: if-statement; while-statement; assignment; call; block; .\nif-statement: \"if\", S, condition, \"then\", S, statement, else-part?.\nelse-part: \"else\", S, statement.\nwhile-statement: \"while\", S, condition, \"do\", S, statement.\nassignment: variable, \"=\", S, expression.\nvariable: identifier.\ncall: identifier, \"(\", S, parameter**(\",\", S), \")\", S.\nparameter: -expression.\nidentifier: letter+, S.\nexpression: identifier; number.\nnumber: digit+, S.\n-letter: [\"a\"-\"z\"]; [\"A\"-\"Z\"].\n-digit: [\"0\"-\"9\"].\ncondition: identifier.\n-S: \" \"*.",
+        "input": "{a=0;f(a, 0);}",
+        "description": "Simple programming language"
+      },
+      {
+        "name": "Xpath",
+        "id": "xpath",
+        "grammar": "XPath: Expr.\n\nParamList: Param, ( ',', Param )*.\nParam: '$', EQName, TypeDeclaration?.\nFunctionBody: EnclosedExpr.\nEnclosedExpr: '{', Expr?, '}'.\n\nExpr: ExprSingle, ( s?,',',s?, ExprSingle )*.\n\n-ExprSingle: OrExpr; OrExprSingle.\n\n\n-OrExprSingle: AndExpr.\nOrExpr: AndExpr, (s?, 'or', s?,  AndExpr )+.\nAndExpr: ComparisonExpr, (s?, 'and', s?, ComparisonExpr )*.\nComparisonExpr: StringConcatExpr, (s, ( @ValueComp ; @GeneralComp ;@ NodeComp ), s, StringConcatExpr )?.\nStringConcatExpr: RangeExpr, (s?, '||', s?, RangeExpr )*.\nRangeExpr: AdditiveExpr, ( s, 'to', s, AdditiveExpr )?.\nAdditiveExpr: MultiplicativeExpr;\n   MultiplicativeExpr,  s?, @AddOp, s?, AdditiveExpr.\n@AddOp: ( '+' ; '-' ).\nMultiplicativeExpr: UnionExpr;\n   UnionExpr,  s?, @MultOp, s?, MultiplicativeExpr.\n@MultOp:  '*' ; 'div' ; 'idiv' ; 'mod'.\nUnionExpr: IntersectExceptExpr, ( ( 'union' ; '|' ), IntersectExceptExpr )*.\nIntersectExceptExpr: InstanceofExpr, ( s, ( 'intersect' ;'except' ), s, InstanceofExpr )*.\nInstanceofExpr: TreatExpr, ( s, 'instance', s, 'of', s, @SequenceType )?.\nTreatExpr: CastExpr, ( s, -'treat', s, -'as', s, @SequenceType )?.\nCastExpr: ArrowExpr, ( s, -'cast', s,-'as', s, @SingleType )?.\nArrowExpr: UnaryExpr, ( '=>', ArrowFunctionSpecifier, ArgumentList )*.\n\n\nUnaryExpr: ( '-' ; '+' )*, ValueExpr.\n-ValueExpr: SimpleMapExpr.\nGeneralComp: '='; '!='; '<'; '<='; '>'; '>='.\nValueComp: 'eq'; 'ne'; 'lt'; 'le'; 'gt'; 'ge'.\nNodeComp: 'is'; '<<'; '>>'.\nSimpleMapExpr: PathExpr, ( '!', PathExpr )*.\nPathExpr: '/', ( RelativePathExpr );\n   '//', RelativePathExpr;\n   RelativePathExpr.\nRelativePathExpr: StepExpr, ( ( '/'; '//' ), StepExpr )*.\n\n-StepExpr: PostfixExpr; AxisStep.\n-AxisStep: ( ReverseStep;ForwardStep ).\nForwardStep: @ForwardAxis, NodeTest;\n   AbbrevForwardStep.\nForwardAxis: 'child::';\n   'descendant::';\n   'attribute::';\n   'self::';\n   'descendant-or-self::';\n   'following-sibling::';\n   'following::';\n   'namespace::'.\nAbbrevForwardStep: '@'?, QName.\nReverseStep: @ReverseAxis, NodeTest;\n   @AbbrevReverseStep.\nReverseAxis: 'parent::';\n   'ancestor::';\n   'preceding-sibling::';\n   'preceding::';\n   'ancestor-or-self::'.\nAbbrevReverseStep: '..'.\n\n\n-NodeTest:  KindTest; NameTest.\n-NameTest: EQName; Wildcard.\n\nPostfixExpr: PrimaryExpr.\nArgumentList: -'(',s?, ( -Argument,(s?,  -',', s?, -Argument )* )?, s?, -')'.\n\nKeySpecifier: NCName;| IntegerLiteral; ParenthesizedExpr; '*'.\n-ArrowFunctionSpecifier: EQName; VarRef; ParenthesizedExpr.\n\n-PrimaryExpr: Literal;\n   VarRef;\n   ParenthesizedExpr;\n   ContextItemExpr;\n   FunctionCall;\n   FunctionItemExpr;\n   MapConstructor;\n   ArrayConstructor;\n   UnaryLookup.\n-Literal: NumericLiteral; StringLiteral.\n-NumericLiteral: IntegerLiteral; DecimalLiteral;| DoubleLiteral.\nVarRef: -'$', @VarName.\nVarName: EQName.\nParenthesizedExpr: -'(', Expr?, -')'.\nContextItemExpr: -'.'.\nFunctionCall: @FunctionEQName, -ArgumentList.\n-Argument: ExprSingle; ArgumentPlaceholder.\nArgumentPlaceholder: -'?'.\nFunctionItemExpr: NamedFunctionRef; InlineFunctionExpr.\nNamedFunctionRef: FunctionEQName, '#', IntegerLiteral.\nInlineFunctionExpr: -'function', -'(', ParamList?, ')', ( s, 'as', s, SequenceType )?, FunctionBody.\nMapConstructor: -'map', -'{', ( MapConstructorEntry, ( ',', MapConstructorEntry )* )?, -'}'.\nMapConstructorEntry: MapKeyExpr, -':', MapValueExpr.\nMapKeyExpr: ExprSingle.\nMapValueExpr: ExprSingle.\nArrayConstructor: SquareArrayConstructor; CurlyArrayConstructor.\nSquareArrayConstructor: -'[', ( ExprSingle, ( -',', ExprSingle )* )?, -']'.\nCurlyArrayConstructor: -'array', '{', Expr?, -'}'.\nUnaryLookup: -'?', KeySpecifier.\n\nSingleType: SimpleTypeName, '?'?.\nTypeDeclaration: 'as', SequenceType.\nSequenceType: 'empty-sequence()';\n   ItemType, OccurrenceIndicator?.\n@OccurrenceIndicator: '?'; '*'; '+'.\nItemType: KindTest;\n 'item()';\n FunctionTest;\n MapTest;\n ArrayTest;\n AtomicOrUnionType;\n ParenthesizedItemType.\nAtomicOrUnionType: EQName.\n\n\n-KindTest: DocumentTest;\n   ElementTest;\n   AttributeTest;\n   SchemaElementTest;\n   SchemaAttributeTest;\n   PITest;\n   CommentTest;\n   TextTest;\n   NamespaceNodeTest;\n   AnyKindTest.\nAnyKindTest: 'node()'.\nDocumentTest: -'document-node(' , ( ElementTest ; SchemaElementTest )?, -')'.\nTextTest: -'text()'.\nCommentTest: -'comment()'.\nNamespaceNodeTest: -'namespace-node()'.\nPITest:  -'processing-instruction(' , ( NCName ; StringLiteral )?, -')'.\nAttributeTest: -'attribute(' ,( AttribNameOrWildcard, ( ',', TypeName )? )?, -')'.\nAttribNameOrWildcard: AttributeName; '*'.\nSchemaAttributeTest: -'schema-attribute(', AttributeDeclaration, -')'.\nAttributeDeclaration: AttributeName.\nElementTest: -'element(' , ( ElementNameOrWildcard, ( ',', TypeName, '?'? )? )?, -')'.\nElementNameOrWildcard: ElementName;'*'.\nSchemaElementTest: -'schema-element(', ElementDeclaration, -')'.\nElementDeclaration: ElementName.\n\nAttributeName: EQName.\nElementName: EQName.\nSimpleTypeName: EQName.\nTypeName: EQName.\n\nFunctionTest: AnyFunctionTest; TypedFunctionTest.\nAnyFunctionTest: -'function(*)'.\nTypedFunctionTest: -'function(', ( SequenceType, ( -',', SequenceType )* )?, -')', s, 'as', s, SequenceType.\nMapTest: AnyMapTest; TypedMapTest.\nAnyMapTest: -'map(*)'.\nTypedMapTest: -'map(', s, AtomicOrUnionType,s,  -',', s,  SequenceType, s, -')'.\nArrayTest: AnyArrayTest; TypedArrayTest.\nAnyArrayTest: -'array(*)'.\nTypedArrayTest: -'array(', s, SequenceType, s, -')'.\nParenthesizedItemType: -'(',s, ItemType,s, -')'.\n\nFunctionEQName: FunctionName; URIQualifiedName.\nEQName: QName; URIQualifiedName.\n\nQName: FunctionName;\n    'array';\n    'attribute';\n    'comment';\n    'document-node';\n    'element';\n    'empty-sequence';\n    'function';\n    'if';\n    'item';\n    'map';\n    'namespace-node';\n    'node';\n    'processing-instruction';\n    'schema-attribute';\n    'schema-element';\n    'switch';\n    'text';\n    'typeswitch'.\n \n -FunctionName: QNameToken;\n    'ancestor';\n    'ancestor-or-self';\n    'and';\n    'cast';\n    'castable';\n    'child';\n    'descendant';\n    'descendant-or-self';\n    'div';\n    'else';\n    'eq';\n    'every';\n    'except';\n    'following';\n    'following-sibling';\n    'for';\n    'ge';\n    'gt';\n    'idiv';\n    'instance';\n    'intersect';\n    'is';\n    'le';\n    'let';\n    'lt';\n    'mod';\n    'namespace';\n    'ne';\n    'or';\n    'parent';\n    'preceding';\n    'preceding-sibling';\n    'return';\n    'satisfies';\n    'self';\n    'some';\n    'to';\n    'treat';\n    'union'.\n\nStringLiteral: -'\"', ( EscapeQuot; ~['\"'] )*, -'\"';\n   -\"'\", ( EscapeApos ; ~[\"'\"] )*, -\"'\".\nIntegerLiteral: -Digits.\nDecimalLiteral: '.', -Digits;\n   -Digits, '.', ['0'-'9']*.\nDoubleLiteral: ( '.', -Digits ; -Digits, ( '.', ['0'-'9']* )? ), ['e'; 'E'], -Digits.\n\n-URIQualifiedName: BracedURILiteral, NCName.\nBracedURILiteral: 'Q', '{', ~['{';'}']*, '}'.\nEscapeQuot: '\"\"'.\nEscapeApos: \"''\".\n\nQNameToken: PrefixedName;  UnprefixedName.\nPrefixedName: @Prefix, -':', @LocalPart.\nUnprefixedName: LocalPart.\nPrefix: NCName.\nLocalPart: NCName.\nNCName: @Name.\n\n-NameStartChar: ['A'-'Z'];\n   '_';\n   ['a'-'z'].\n-NameChar: NameStartChar;\n   '-';\n   '.';\n   ['0'-'9'].  \nName: NameStartChar, NameChar*.\n-s: -' '+.\nWildcard: '*';\n   NCName, ':', '*';\n   '*', ':', NCName;\n   BracedURILiteral, '*'.\nDigits: ['0'-'9']+.",
+        "input": "a[.!='']",
+        "description": "XPath expression parsing"
+      }
+    ]
+  },
+  "stats": {
+    "total_tests": 44,
+    "categories": 7
+  }
+}

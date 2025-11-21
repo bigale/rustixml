@@ -184,6 +184,82 @@
             border-radius: 4px;
         }
 
+        .test-cases {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .test-cases h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .test-info {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .test-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .test-select {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+
+        .test-select:disabled {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+
+        .btn-load {
+            padding: 10px 20px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-load:hover:not(:disabled) {
+            background: #45a049;
+        }
+
+        .btn-load:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .test-description {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: #555;
+            min-height: 20px;
+        }
+
+        .test-description:empty {
+            display: none;
+        }
+
         .examples {
             margin-top: 30px;
             padding-top: 30px;
@@ -277,8 +353,23 @@ letter: ["A"-"Z"; "a"-"z"].</textarea>
                 </div>
             </div>
 
+            <div class="test-cases">
+                <h3>🧪 Test Suite Examples</h3>
+                <p class="test-info">Load real test cases from the iXML conformance suite (44 passing tests)</p>
+                <div class="test-selector">
+                    <select id="category-select" class="test-select">
+                        <option value="">Select a category...</option>
+                    </select>
+                    <select id="test-select" class="test-select" disabled>
+                        <option value="">Select a test...</option>
+                    </select>
+                    <button class="btn-load" id="load-test-btn" disabled>📥 Load Test</button>
+                </div>
+                <div id="test-description" class="test-description"></div>
+            </div>
+
             <div class="examples">
-                <h3>📚 Example Grammars</h3>
+                <h3>📚 Quick Start Examples</h3>
                 <div class="example-buttons">
                     <button class="example-btn" data-example="greeting">Greeting</button>
                     <button class="example-btn" data-example="csv">CSV Parser</button>
@@ -431,9 +522,99 @@ number: ["0"-"9"]+.`,
             });
         });
 
+        // Test case management
+        let testCases = null;
+        let selectedCategory = null;
+        let selectedTest = null;
+
+        async function loadTestCases() {
+            try {
+                const response = await fetch('./test-cases.json');
+                testCases = await response.json();
+                populateCategorySelect();
+                console.log(`Loaded ${testCases.stats.total_tests} test cases`);
+            } catch (err) {
+                console.error('Failed to load test cases:', err);
+            }
+        }
+
+        function populateCategorySelect() {
+            const categorySelect = document.getElementById('category-select');
+            categorySelect.innerHTML = '<option value="">Select a category...</option>';
+            
+            for (const category in testCases.categories) {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = `${category} (${testCases.categories[category].length} tests)`;
+                categorySelect.appendChild(option);
+            }
+        }
+
+        function populateTestSelect(category) {
+            const testSelect = document.getElementById('test-select');
+            const loadBtn = document.getElementById('load-test-btn');
+            const description = document.getElementById('test-description');
+            
+            testSelect.innerHTML = '<option value="">Select a test...</option>';
+            testSelect.disabled = !category;
+            loadBtn.disabled = true;
+            description.textContent = '';
+            selectedTest = null;
+            
+            if (category && testCases.categories[category]) {
+                testCases.categories[category].forEach((test, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = test.name;
+                    testSelect.appendChild(option);
+                });
+            }
+        }
+
+        function updateTestDescription(category, testIndex) {
+            const description = document.getElementById('test-description');
+            const loadBtn = document.getElementById('load-test-btn');
+            
+            if (category && testIndex !== null && testCases.categories[category]) {
+                const test = testCases.categories[category][testIndex];
+                selectedTest = test;
+                description.textContent = `📝 ${test.description}`;
+                loadBtn.disabled = false;
+            } else {
+                selectedTest = null;
+                description.textContent = '';
+                loadBtn.disabled = true;
+            }
+        }
+
+        function loadSelectedTest() {
+            if (selectedTest) {
+                document.getElementById('grammar').value = selectedTest.grammar;
+                document.getElementById('input').value = selectedTest.input;
+                updateCharCounts();
+                
+                // Scroll to grammar
+                document.getElementById('grammar').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        // Test case event listeners
+        document.getElementById('category-select').addEventListener('change', (e) => {
+            selectedCategory = e.target.value || null;
+            populateTestSelect(selectedCategory);
+        });
+
+        document.getElementById('test-select').addEventListener('change', (e) => {
+            const testIndex = e.target.value ? parseInt(e.target.value) : null;
+            updateTestDescription(selectedCategory, testIndex);
+        });
+
+        document.getElementById('load-test-btn').addEventListener('click', loadSelectedTest);
+
         // Initialize
         initWasm();
         updateCharCounts();
+        loadTestCases();
     </script>
 </body>
 </html>
