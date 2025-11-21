@@ -28,7 +28,7 @@
         "name": "Tab",
         "id": "tab",
         "grammar": "data: s?, word. \n-s: [#20; #9]+.\nword: [L]+.",
-        "input": "abc",
+        "input": "\t\tabc",
         "description": "Tab"
       },
       {
@@ -116,28 +116,28 @@
         "name": "Diary",
         "id": "diary",
         "grammar": "diary: entry+.\nentry: date, para.\ndate: day, s, month, s,  year, nl.\nday: digit, digit?.\n-digit:[\"0\"-\"9\"].\nmonth: \"January\"; \"February\"; \"March\"; \"April\"; \"May\"; \"June\";\n       \"July\"; \"August\"; \"September\"; \"October\"; \"November\"; \"December\".\nyear: digit, digit, digit, digit.\n\npara: word++s, s?, blank.\n-blank: nl, nl.\n-word: (letter; punctuation)+.\n-letter: [L].\n-punctuation: [\".;:,'?!\"].\n-s: \" \"+.\n-nl: -#a | -#d, -#a .",
-        "input": "24 December 2021\nPanic shopping! Panic packing! Will we make it before midnight?\n\n25 December 2021\nFood! Presents!\n\n26 December 2021\nGroan.",
+        "input": "24 December 2021\nPanic shopping! Panic packing! Will we make it before midnight?\n\n25 December 2021\nFood! Presents!\n\n26 December 2021\nGroan.\n\n",
         "description": "Diary entry with date parsing"
       },
       {
         "name": "Diary2",
         "id": "diary2",
         "grammar": "diary: entry+.\nentry: date, para.\ndate: day, s, month, s,  year, nl.\nday: digit, digit?.\n-digit:[\"0\"-\"9\"].\nmonth: \"January\"; \"February\"; \"March\"; \"April\"; \"May\"; \"June\";\n       \"July\"; \"August\"; \"September\"; \"October\"; \"November\"; \"December\".\nyear: digit, digit, digit, digit.\n\npara: char*, blank.\n-blank: nl, nl.\n-char: letter; punctuation; s.\n-letter: [L].\n-punctuation: [\".;:,'?!\"].\n-s: \" \".\n-nl: -#a | -#d, -#a .",
-        "input": "24 December 2021\nPanic shopping! Panic packing! Will we make it before midnight?\n\n25 December 2021\nFood! Presents!\n\n26 December 2021\nGroan.",
+        "input": "24 December 2021\nPanic shopping! Panic packing! Will we make it before midnight?\n\n25 December 2021\nFood! Presents!\n\n26 December 2021\nGroan.\n\n",
         "description": "Diary2"
       },
       {
         "name": "Diary3",
         "id": "diary3",
         "grammar": "diary: entry+.\nentry: date, para.\ndate: day, s, month, s,  year, nl.\n-s: -\" \"+.\nday: digit, digit?.\n-digit:[\"0\"-\"9\"].\nmonth: \"January\"; \"February\"; \"March\"; \"April\"; \"May\"; \"June\";\n       \"July\"; \"August\"; \"September\"; \"October\"; \"November\"; \"December\".\nyear: digit, digit, digit, digit.\n\npara: char*, blank.\n-blank: nl, nl.\n-char: ~[#a].\n-nl: -#a | -#d, -#a .",
-        "input": "24 December 2021\nPanic shopping! Panic packing! Will we make it before midnight?\n\n25 December 2021\nFood! Presents!\n\n26 December 2021\nGroan.",
+        "input": "24 December 2021\nPanic shopping! Panic packing! Will we make it before midnight?\n\n25 December 2021\nFood! Presents!\n\n26 December 2021\nGroan.\n\n",
         "description": "Diary3"
       },
       {
         "name": "Json",
         "id": "json",
         "grammar": "json: element.\nelement: value.\n-value: string;\n        number;\n        object;\n        array;\n        \"true\", S;\n        \"false\", S;\n        \"null\", S.\nobject: \"{\", S, members, \"}\", S.\n-members: member**(\",\", S).\nmember: @string, S, \":\", S, element.\narray: \"[\", S, elements, \"]\", S.\nelements: element**(\",\", S).\nstring: -'\"', character*, -'\"'.\n-character: ~['\"\\'; #0-#19];\n           \"\\\", escape.\nescape: ['\"\\/bfnrt'];\n       \"u\", hex, hex, hex, hex.\nhex: digit; [\"A\"-\"F\"; \"a\"-\"f\"].\nnumber: int, frac, exp.\nint: \"-\"?, digit;\n     \"-\"?, onenine, digit*.\ndigit: [\"0\"-\"9\"].\nonenine: [\"1\"-\"9\"].\nfrac: (\".\", digit+)?.\nexp: ([\"eE\"], sign, digit+)?.\nsign: [\"+-\"]?.\n-S: -[#9; #a; #d; \" \"]*.",
-        "input": "{\"menu\": {\n  \"id\": \"file\",\n  \"value\": \"File\",\n  \"popup\": {\n    \"menuitem\": [\n      {\"value\": \"New\", \"onclick\": \"CreateNewDoc()\"},\n      {\"value\": \"Open\", \"onclick\": \"OpenDoc()\"},\n      {\"value\": \"Close\", \"onclick\": \"CloseDoc()\"}\n    ]\n  }\n },\n \"number\": -0.0e+00,\n \"string\": \"\\uffff\",\n \"bool\": true,\n \"also\": false,\n \"no\": null\n}",
+        "input": "{\"menu\": {\n  \"id\": \"file\",\n  \"value\": \"File\",\n  \"popup\": {\n    \"menuitem\": [\n      {\"value\": \"New\", \"onclick\": \"CreateNewDoc()\"},\n      {\"value\": \"Open\", \"onclick\": \"OpenDoc()\"},\n      {\"value\": \"Close\", \"onclick\": \"CloseDoc()\"}\n    ]\n  }\n },\n \"number\": -0.0e+00,\n \"string\": \"\\uffff\",\n \"bool\": true,\n \"also\": false,\n \"no\": null\n}\n\n",
         "description": "Simple JSON parser"
       },
       {
@@ -151,7 +151,7 @@
         "name": "Vcard",
         "id": "vcard",
         "grammar": "card: -\"BEGIN:\", name, eoln, property+, -\"END:\", endname, eoln.\nproperty: name, parameters, -\":\", attribute++-\";\", -eoln.\nparameters: (-\";\", parameter)*.\nparameter: name, -\"=\", pvalue.\n@pvalue: ~[\";:\"; #a; #d]+.\nattribute: value.\n@value: achar*.\n-achar: ~[\"#;\"; #a; #d].\n@name: [\"a\"-\"z\"; \"A\"-\"Z\"]+.\n@endname: name.\n-eoln: -#a | -#d, -#a.",
-        "input": "BEGIN:VCARD\nVERSION:3.0\nN:Lastname;Surname\nFN:Displayname\nORG:EVenX\nURL:http://www.evenx.com/\nEMAIL:info@evenx.com\nTEL;TYPE=voice,work,pref:+49 1234 56788\nADR;TYPE=intl,work,postal,parcel:;;Wallstr. 1;Berlin;;12345;Germany\nEND:VCARD",
+        "input": "BEGIN:VCARD\nVERSION:3.0\nN:Lastname;Surname\nFN:Displayname\nORG:EVenX\nURL:http://www.evenx.com/\nEMAIL:info@evenx.com\nTEL;TYPE=voice,work,pref:+49 1234 56788\nADR;TYPE=intl,work,postal,parcel:;;Wallstr. 1;Berlin;;12345;Germany\nEND:VCARD\n",
         "description": "vCard contact format"
       },
       {
@@ -174,7 +174,7 @@
         "name": "Address",
         "id": "address",
         "grammar": "address: person, lf, street, lf, postcode, city, lf, country, lf; \n         person, lf, street, lf, city, postcode, lf, country, lf.\nperson: (title, S?)?, (initials; given, S), surname, S?.\ntitle: \"Mr.\"; \"Mrs.\"; \"Dr.\"; \"Ms.\".\ninitials: initial+.\ninitial: LETTER, \".\", S?.\nsurname: name.\ngiven: name.\n-name: LETTER, letters.\nstreet: no, S?, streetname; streetname, S?, no, S?.\nstreetname: name, S; name, S, name.\ncity: name, S; name, S, name, S.\ncountry: name, S?; name, S, name, S?.\npostcode: digits, S, LETTER, LETTER, S?; \n          LETTER, LETTER, digits, S, digit, LETTER, LETTER, S?.\nno: digits.\n-LETTER: [\"A\"-\"Z\"].\n-letters: [\"a\"-\"z\"]*.\n-digit: [\"0\"-\"9\"].\n-digits: [\"0\"-\"9\"]+.\n-S: \" \"+.\n-lf: -#a | -#d, -#a .",
-        "input": "Steven Pemberton\n21 Sandridge Road\nSt Albans AL1 4BY\nUnited Kingdom",
+        "input": "Steven Pemberton\n21 Sandridge Road\nSt Albans AL1 4BY\nUnited Kingdom\n",
         "description": "Postal address parsing"
       },
       {
@@ -218,7 +218,7 @@
         "name": "Para Test",
         "id": "para-test",
         "grammar": "doc: section+.\nsection: para, lf.\npara: line+.\nline: ~[#a | #d]+, lf.\n-lf: -#a | -#d, -#a.",
-        "input": "AB December 2021\nPara entry.\n\nHere is annother section\nSee.\n\nAnd another.\nThe end.",
+        "input": "AB December 2021\nPara entry.\n\nHere is annother section\nSee.\n\nAnd another.\nThe end.\n\n",
         "description": "Para Test"
       },
       {
@@ -269,7 +269,7 @@
         "name": "Ranges",
         "id": "ranges",
         "grammar": "test: other, digit, other, cap, other, lc, other, lf?.\nother: ~[#a; #d; #30-#39; #41-#5A; #61-#7A]+.\ncap: [#41-#5A]+.\nlc: [#61-#7A]+.\ndigit: [#30-#39]+.\n-lf: -#a | -#d, -#a.\n{\n0123456789abcdef\n !\"#$%&'()*+,-./\n0123456789:;<=>?\n@ABCDEFGHIJKLMNO\nPQRSTUVWXYZ[\\]^_\n`abcdefghijklmno\npqrstuvwxyz{|}~\n}",
-        "input": "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+        "input": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\n",
         "description": "Ranges"
       },
       {
@@ -283,7 +283,7 @@
         "name": "Unicode Classes",
         "id": "unicode-classes",
         "grammar": "{ Unicode classes test}\n{Each input line starts with the one or two letter name of the class it is testing, a space, and a list of unicode characters that are in that class.\n\nThe output is an element of that classname for each line of input, with the characters as content, with the exception of the control characters, for which the element content is a \".\" for each character in the input.}\n\nclasses: line+.\n-line: ( C; Cc; Cf; Cn; Co; Cs; L; LC; Ll; Lm; Lo; Lt; Lu; M; Mc; Me; Mn; N; Nd; Nl; No; P; Pc; Pd; Pe; Pf; Pi; Po; Ps; S; Sc; Sk; Sm; So; Z; Zl; Zp; Zs), newline.\n-newline: (-#a; -#d)+.\n\n  C: -\"C \", (-[C], +\".\")*.\n  L: -\"L \", [L]*.\n  M: -\"M \", [M]*.\n  N: -\"N \", [N]*.\n  P: -\"P \", [P]*.\n  S: -\"S \", [S]*.\n  Z: -\"Z \", [Z]*.\n  \n  Cc: -\"Cc \", (-[Cc], +\".\")*.\n  Cf: -\"Cf \", (-[Cf], +\".\")*.\n  Cn: -\"Cn \", (-[Cn], +\".\")*.\n  Co: -\"Co \", (-[Co], +\".\")*.\n  Cs: -\"Cs \", (-[Cs], +\".\")*.\n  LC: -\"LC \", [LC]*.\n  Ll: -\"Ll \", [Ll]*.\n  Lm: -\"Lm \", [Lm]*.\n  Lo: -\"Lo \", [Lo]*.\n  Lt: -\"Lt \", [Lt]*.\n  Lu: -\"Lu \", [Lu]*.\n  Mc: -\"Mc \", [Mc]*.\n  Me: -\"Me \", [Me]*.\n  Mn: -\"Mn \", [Mn]*.\n  Nd: -\"Nd \", [Nd]*.\n  Nl: -\"Nl \", [Nl]*.\n  No: -\"No \", [No]*.\n  Pc: -\"Pc \", [Pc]*.\n  Pd: -\"Pd \", [Pd]*.\n  Pe: -\"Pe \", [Pe]*.\n  Pf: -\"Pf \", [Pf]*.\n  Pi: -\"Pi \", [Pi]*.\n  Po: -\"Po \", [Po]*.\n  Ps: -\"Ps \", [Ps]*.\n  Sc: -\"Sc \", [Sc]*.\n  Sk: -\"Sk \", [Sk]*.\n  Sm: -\"Sm \", [Sm]*.\n  So: -\"So \", [So]*.\n  Zl: -\"Zl \", [Zl]*.\n  Zp: -\"Zp \", [Zp]*.\n  Zs: -\"Zs \", [Zs]*.",
-        "input": "Lm ʰ\nLo ªאتܐޓߊࠀࡀऄঅਅઅଅஅఅಅഅඅกກༀကᄀሀᐁᚁᚠᜀᜠᝀᝠកᠠᢰᤁᥐᦀᨀᨠᬅᮃᯀᰀᱚᳩℵⴰⶀぁァㄅ智取威虎山\nLl aàǆµßαϐюաდᏸℊℹⰰⲁａ𐐨𐓘𐖗𐳀𑣁ðþ\nLu AÀǄ\nLt ǅ\nLC aàǆAÀǄǅΘϢЮԱႠᎠℂÅⰁⲀＡ𝐀𝓐𝕲\nL aàǆAÀǄǅʰªאتܐޓߊࠀࡀऄঅਅઅଅஅఅಅഅඅกກༀကᄀሀᐁᚁᚠᜀᜠᝀᝠកᠠᢰᤁᥐᦀᨀᨠᬅᮃᯀᰀᱚᳩℵⴰⶀぁァㄅ智取威虎山\nMc ऻ\nMe ҈\nMn ̀\nM ऻ҈\nNd 0٩۲߀०০੦૦\nNl Ⅻⅻ\nNo ²½\nN 0٩۲߀०০੦૦Ⅻⅻ²½\nPc _‿⁀⁔︳︴﹍﹎﹏＿\nPd -\nPe )]}\nPf »’”›\nPi «‘‛“\nPo !\"#%&'*,./:;?@\\¡§¶·\nPs ([{\nP _‿⁀⁔︳︴﹍﹎﹏＿-)]}»’”›«‘‛“!\"#%&'*,./:;?@\\¡§¶·([{\nSc $¢£¤¥€\nSk ^`¨¯´\nSm +<=>|~¬→\nSo ¦©®°\nS $¢£¤¥€^`¨¯´+<=>|~¬→¦©®°\nZl  \nZp  \nZs   \nZ     \nCo \nCc \u0007\b\nCf ­\nCs \nCn ͸\nC \u0007\b­͸",
+        "input": "Lm ʰ\nLo ªאتܐޓߊࠀࡀऄঅਅઅଅஅఅಅഅඅกກༀကᄀሀᐁᚁᚠᜀᜠᝀᝠកᠠᢰᤁᥐᦀᨀᨠᬅᮃᯀᰀᱚᳩℵⴰⶀぁァㄅ智取威虎山\nLl aàǆµßαϐюաდᏸℊℹⰰⲁａ𐐨𐓘𐖗𐳀𑣁ðþ\nLu AÀǄ\nLt ǅ\nLC aàǆAÀǄǅΘϢЮԱႠᎠℂÅⰁⲀＡ𝐀𝓐𝕲\nL aàǆAÀǄǅʰªאتܐޓߊࠀࡀऄঅਅઅଅஅఅಅഅඅกກༀကᄀሀᐁᚁᚠᜀᜠᝀᝠកᠠᢰᤁᥐᦀᨀᨠᬅᮃᯀᰀᱚᳩℵⴰⶀぁァㄅ智取威虎山\nMc ऻ\nMe ҈\nMn ̀\nM ऻ҈\nNd 0٩۲߀०০੦૦\nNl Ⅻⅻ\nNo ²½\nN 0٩۲߀०০੦૦Ⅻⅻ²½\nPc _‿⁀⁔︳︴﹍﹎﹏＿\nPd -\nPe )]}\nPf »’”›\nPi «‘‛“\nPo !\"#%&'*,./:;?@\\¡§¶·\nPs ([{\nP _‿⁀⁔︳︴﹍﹎﹏＿-)]}»’”›«‘‛“!\"#%&'*,./:;?@\\¡§¶·([{\nSc $¢£¤¥€\nSk ^`¨¯´\nSm +<=>|~¬→\nSo ¦©®°\nS $¢£¤¥€^`¨¯´+<=>|~¬→¦©®°\nZl  \nZp  \nZs   \nZ     \nCo \nCc \u0007\b\nCf ­\nCs \nCn ͸\nC \u0007\b­͸\n",
         "description": "Unicode character class support"
       },
       {

@@ -54,10 +54,13 @@ def get_category(test_name: str) -> str:
             return category
     return 'Other'
 
-def read_file_safe(path: Path) -> Optional[str]:
+def read_file_safe(path: Path, strip: bool = True) -> Optional[str]:
     """Read file, return None if doesn't exist."""
     try:
-        return path.read_text(encoding='utf-8').strip()
+        text = path.read_text(encoding='utf-8')
+        # For grammar files, strip whitespace
+        # For input files, preserve exact formatting including trailing newlines
+        return text.strip() if strip else text
     except (FileNotFoundError, UnicodeDecodeError):
         return None
 
@@ -97,15 +100,15 @@ def extract_test_cases(tests_dir: Path) -> Dict[str, List[Dict]]:
             print(f"⏭️  Skipping {test_name} (not yet supported)")
             continue
         
-        # Read grammar
-        grammar = read_file_safe(ixml_file)
+        # Read grammar (strip whitespace)
+        grammar = read_file_safe(ixml_file, strip=True)
         if not grammar:
             print(f"⚠️  Skipping {test_name} (no grammar)")
             continue
         
-        # Read input
+        # Read input (preserve exact formatting including trailing newlines)
         inp_file = ixml_file.with_suffix('.inp')
-        input_text = read_file_safe(inp_file)
+        input_text = read_file_safe(inp_file, strip=False)
         if not input_text:
             print(f"⚠️  Skipping {test_name} (no input)")
             continue
