@@ -3,8 +3,11 @@
 [![Crates.io](https://img.shields.io/crates/v/rustixml.svg)](https://crates.io/crates/rustixml)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
 [![WASM](https://img.shields.io/badge/wasm-ready-green.svg)](https://webassembly.org/)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://bigale.github.io/rustixml/)
 
 **A pure Rust implementation of the Invisible XML (iXML) specification with WebAssembly support.**
+
+> **🌐 [Try it live in your browser!](https://bigale.github.io/rustixml/)** - Interactive demos with real-time parsing
 
 Turn any text into XML using simple grammar rules. Works natively in Rust and in the browser via WebAssembly.
 
