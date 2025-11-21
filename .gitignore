@@ -5,3 +5,4 @@ conformance_results*.txt
 .aikit/
 .gitforai/
 .internal/
+.claude/
