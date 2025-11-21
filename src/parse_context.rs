@@ -4,7 +4,7 @@
 //! for left-recursion detection and parse results with consumed counts.
 
 use crate::xml_node::XmlNode;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Context maintained during parsing for tracking and error reporting
 #[derive(Debug, Clone)]
@@ -18,6 +18,10 @@ pub struct ParseContext {
     /// (rule_name, position) pairs currently on the call stack
     /// for left-recursion detection
     pub left_recursion: HashSet<(String, usize)>,
+
+    /// Memoization cache: (rule_name, position) -> Result<ParseResult, ParseError>
+    /// Stores the result of parsing a rule at a specific position to avoid re-parsing
+    pub memo_cache: HashMap<(String, usize), Result<ParseResult, ParseError>>,
 }
 
 impl ParseContext {
@@ -27,6 +31,7 @@ impl ParseContext {
             rule_name: String::new(),
             depth: 0,
             left_recursion: HashSet::new(),
+            memo_cache: HashMap::new(),
         }
     }
 

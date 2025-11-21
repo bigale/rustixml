@@ -79,6 +79,17 @@ impl NativeParser {
         ctx: &mut ParseContext,
     ) -> Result<ParseResult, ParseError> {
         let start_pos = stream.position();
+        let memo_key = (rule.name.clone(), start_pos);
+
+        // Check memoization cache first
+        if let Some(cached_result) = ctx.memo_cache.get(&memo_key) {
+            // Clone the result and restore stream position
+            let result = cached_result.clone();
+            if let Ok(ref parse_result) = result {
+                stream.set_position(start_pos + parse_result.consumed);
+            }
+            return result;
+        }
 
         // Check for left recursion at this position
         if !ctx.enter_rule(&rule.name, start_pos) {
@@ -93,7 +104,12 @@ impl NativeParser {
         ctx.exit_rule(&rule.name, start_pos);
 
         // Apply rule-level mark to result
-        result.map(|res| self.apply_rule_mark(res, rule))
+        let final_result = result.map(|res| self.apply_rule_mark(res, rule));
+
+        // Store in memoization cache (clone before storing)
+        ctx.memo_cache.insert(memo_key, final_result.clone());
+
+        final_result
     }
 
     /// Apply rule-level mark to parse result
