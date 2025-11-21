@@ -11,7 +11,7 @@ Turn any text into XML using simple grammar rules. Works natively in Rust and in
 ## ✨ Features
 
 - 🚀 **Fast native recursive descent parser** - Direct interpretation of iXML grammars
-- ✅ **83.7% spec conformance** - 41 out of 49 iXML test cases passing
+- ✅ **83.7% spec conformance** - 41 out of 49 correctness tests passing ([details](KNOWN_ISSUES.md))
 - 🌐 **WebAssembly support** - 50KB gzipped, runs in any modern browser
 - 📦 **Single dependency** - Only `unicode-general-category` for native builds
 - 🔒 **Pure safe Rust** - No unsafe code
@@ -226,7 +226,7 @@ npm publish
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 Areas where help is especially appreciated:
-- 🐛 Fixing failing test cases (see docs/NATIVE_PARSER_STATUS.md)
+- 🐛 Fixing failing test cases (see [KNOWN_ISSUES.md](KNOWN_ISSUES.md))
 - 📝 Improving documentation
 - ✨ Adding examples
 - 🧪 Writing more tests
