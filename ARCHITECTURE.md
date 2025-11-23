@@ -47,7 +47,7 @@ This document describes the architecture of rustixml v0.2.0, focusing on the **n
        │  • Recursion detection    │
        │  • Ambiguity detection    │
        │  • Complexity scoring     │
-       │  • Normalization (future) │
+       │  • Grammar normalization  │
        └──────────┬────────────────┘
                   │ GrammarAst + Analysis
                   ▼
@@ -464,17 +464,23 @@ rustixml uses **static analysis** to detect ambiguity:
 - Clear user warnings about grammar issues
 - Foundation for future optimizations (memoization, transformation)
 
-### Normalization (Future)
+### Grammar Normalization
 
-Grammar normalization will transform grammars for better performance:
+Grammar normalization transforms grammars to enable better analysis and left-recursion handling:
 
-**Planned transformations**:
-1. **Left-recursion elimination**: `expr: expr, "+", term` → right-recursive form
-2. **Nullable factoring**: Extract common nullable prefixes
-3. **Hidden rule inlining**: Inline `-` marked rules to reduce tree depth
-4. **Character class partitioning**: Split overlapping ranges for faster matching
+**Implemented transformations**:
+1. **Hidden/Promoted rule inlining**: Inline `-` and `^` marked rules for analysis
+2. **Seed-growing left-recursion**: Handle left-recursive grammars using iterative seed-growing algorithm
+3. **Nullable analysis**: Fixpoint iteration to compute nullable rules for ambiguity detection
 
-**Status**: Framework exists in `src/normalize.rs` but currently disabled. See `docs/NORMALIZATION_LESSONS.md` for details.
+**Implementation**:
+- Normalization framework in `src/normalize.rs`
+- Used for grammar analysis and ambiguity detection
+- Seed-growing algorithm documented in `docs/SEED_GROWING_IMPLEMENTATION.md`
+
+**Future enhancements**:
+- Nullable factoring: Extract common nullable prefixes
+- Character class partitioning: Split overlapping ranges for faster matching
 
 ## Parse Flow
 
@@ -753,18 +759,19 @@ See [`docs/STRATEGY_OPTIONS.md`](docs/STRATEGY_OPTIONS.md) for detailed analysis
 - ✅ Static ambiguity detection with automatic marking
 - ✅ Fixpoint nullable detection
 - ✅ Complexity scoring
+- ✅ Grammar normalization (Pemberton's approach)
+- ✅ Seed-growing left-recursion support
+- ✅ Hidden/promoted rule inlining for analysis
 
 **Short term** (v0.3):
 - Enable character class partitioning
 - Add basic memoization (packrat parsing)
 - Improve ambiguity detection patterns (reduce false negatives)
-- Re-enable left-recursion detection (nullable check needs iterative rewrite)
 
 **Medium term** (v0.4):
-- Left-recursion transformation
-- Enable grammar normalization (currently disabled)
-- Nonterminal inlining for hidden rules
+- Nullable factoring optimization
 - Runtime ambiguity tracking (for 100% conformance)
+- Advanced left-recursion optimizations
 
 **Long term** (v1.0):
 - Consider LALR+GLR for 100% conformance
@@ -778,6 +785,7 @@ See [`docs/STRATEGY_OPTIONS.md`](docs/STRATEGY_OPTIONS.md) for detailed analysis
 - [STRATEGY_OPTIONS.md](docs/STRATEGY_OPTIONS.md) - Improvement strategies
 - [CLAUDE_HISTORICAL.md](docs/CLAUDE_HISTORICAL.md) - Complete development history
 - [GRAMMAR_ANALYSIS_STATUS.md](docs/GRAMMAR_ANALYSIS_STATUS.md) - Grammar analysis implementation details
+- [SEED_GROWING_IMPLEMENTATION.md](docs/SEED_GROWING_IMPLEMENTATION.md) - Seed-growing left-recursion algorithm
 - [NORMALIZATION_LESSONS.md](docs/NORMALIZATION_LESSONS.md) - Lessons learned from normalization attempts
 
 ---
