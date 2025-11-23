@@ -7,14 +7,16 @@
 
 **A pure Rust implementation of the Invisible XML (iXML) specification with WebAssembly support.**
 
-> **🌐 [Try it live in your browser!](https://bigale.github.io/rustixml/)** - Interactive demos with real-time parsing
+> **🌐 Try it live in your browser!**
+> - [Standard Demo](https://bigale.github.io/rustixml/) - Interactive parser with examples
+> - [WASMZ Demo](https://bigale.github.io/rustixml/wasmz.html) - Native wasm:// routing pattern
 
 Turn any text into XML using simple grammar rules. Works natively in Rust and in the browser via WebAssembly.
 
 ## ✨ Features
 
-- 🚀 **Fast native recursive descent parser** - Direct interpretation of iXML grammars
-- ✅ **83.7% spec conformance** - 41 out of 49 correctness tests passing ([details](KNOWN_ISSUES.md))
+- 🚀 **Fast native recursive descent parser** - Direct interpretation of iXML grammars with seed-growing left-recursion
+- ✅ **76.9% spec conformance** - 50 out of 65 tests passing, 95.9% correctness (47/49) ([details](KNOWN_ISSUES.md))
 - 🌐 **WebAssembly support** - 50KB gzipped, runs in any modern browser
 - 📦 **Single dependency** - Only `unicode-general-category` for native builds
 - 🔒 **Pure safe Rust** - No unsafe code
@@ -96,9 +98,11 @@ fn main() -> Result<(), String> {
 </html>
 ```
 
-## 🎮 Live Demo
+## 🎮 Live Demos
 
-Try it online: [Demo Website](https://bigale.github.io/rustixml/) 
+Try it online:
+- **[Standard Demo](https://bigale.github.io/rustixml/)** - Interactive parser with test examples
+- **[WASMZ Demo](https://bigale.github.io/rustixml/wasmz.html)** - Native wasm:// routing pattern
 
 Or run locally:
 
@@ -169,10 +173,17 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 ## 📊 Conformance
 
-**Overall:** 45/65 tests (69.2%)  
-**Correct tests:** 41/49 tests (83.7%)
+**Overall:** 50/65 tests (76.9%)
+**Correct tests:** 47/49 tests (95.9%)
 
-See [docs/NATIVE_PARSER_STATUS.md](docs/NATIVE_PARSER_STATUS.md) for detailed test results.
+Major features supported:
+- ✅ Full left-recursion support (seed-growing algorithm)
+- ✅ Grammar normalization
+- ✅ Static ambiguity detection
+- ✅ Character classes, marks, repetition
+- ✅ Alternatives, sequences, literals
+
+See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for detailed status and roadmap.
 
 ## 🔧 Building
 
