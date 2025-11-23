@@ -110,13 +110,14 @@ impl NativeParser {
         }
 
         // Check for left recursion at this position
-        if !ctx.enter_rule(&rule.name, start_pos) {
-            return Err(ParseError::LeftRecursion {
-                rule: rule.name.clone(),
-                position: start_pos,
-            });
+        let is_left_recursive = !ctx.enter_rule(&rule.name, start_pos);
+
+        if is_left_recursive {
+            // Left-recursion detected! Use seed-growing algorithm
+            return self.parse_with_seed_growing(stream, rule, ctx, start_pos, memo_key);
         }
 
+        // Normal (non-left-recursive) parsing
         let result = self.parse_alternatives(stream, &rule.alternatives, ctx);
 
         ctx.exit_rule(&rule.name, start_pos);
@@ -128,6 +129,87 @@ impl NativeParser {
         ctx.memo_cache.insert(memo_key, final_result.clone());
 
         final_result
+    }
+
+    /// Parse with seed-growing for left-recursive rules (Warth et al., 2008)
+    fn parse_with_seed_growing(
+        &self,
+        stream: &mut InputStream,
+        rule: &Rule,
+        ctx: &mut ParseContext,
+        start_pos: usize,
+        memo_key: (String, usize),
+    ) -> Result<ParseResult, ParseError> {
+        // Seed with failure (base case for recursion)
+        let mut seed: Result<ParseResult, ParseError> = Err(ParseError::LeftRecursion {
+            rule: rule.name.clone(),
+            position: start_pos,
+        });
+
+        // Store failure seed in cache
+        ctx.memo_cache.insert(memo_key.clone(), seed.clone());
+
+        // Grow the seed iteratively until fixed point
+        const MAX_ITERATIONS: usize = 100; // Safety limit to prevent infinite loops
+        let mut iteration = 0;
+
+        loop {
+            iteration += 1;
+            if iteration > MAX_ITERATIONS {
+                // Safety limit reached - return current seed
+                break;
+            }
+
+            // Reset stream position for this iteration
+            stream.set_position(start_pos);
+
+            // Temporarily remove from recursion stack to allow re-entry
+            ctx.exit_rule(&rule.name, start_pos);
+
+            // Try to parse (will use cached seed for recursive calls)
+            let result = self.parse_alternatives(stream, &rule.alternatives, ctx);
+
+            // Re-add to recursion stack
+            let re_entered = ctx.enter_rule(&rule.name, start_pos);
+            debug_assert!(!re_entered, "Should not be able to re-enter during seed-growing");
+
+            // Apply rule-level mark to result
+            let final_result = result.map(|res| self.apply_rule_mark(res, rule));
+
+            // Check if we grew the parse
+            let grew = match (&seed, &final_result) {
+                // Grew from failure to success
+                (Err(_), Ok(new_result)) => {
+                    seed = final_result.clone();
+                    ctx.memo_cache.insert(memo_key.clone(), seed.clone());
+                    true
+                }
+                // Grew from shorter to longer parse
+                (Ok(old_result), Ok(new_result)) if new_result.consumed > old_result.consumed => {
+                    seed = final_result.clone();
+                    ctx.memo_cache.insert(memo_key.clone(), seed.clone());
+                    true
+                }
+                // No growth - fixed point reached
+                _ => false,
+            };
+
+            if !grew {
+                // No growth, we've reached fixed point
+                break;
+            }
+        }
+
+        // Cleanup: remove from recursion stack
+        ctx.exit_rule(&rule.name, start_pos);
+
+        // Restore stream position based on final result
+        stream.set_position(start_pos);
+        if let Ok(ref parse_result) = seed {
+            stream.set_position(start_pos + parse_result.consumed);
+        }
+
+        seed
     }
 
     /// Apply rule-level mark to parse result
