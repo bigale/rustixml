@@ -49,10 +49,8 @@ impl GrammarAnalysis {
         // Find recursive rules (using iterative algorithm)
         let recursive_rules = find_recursive_rules(grammar, &rule_map);
 
-        // Find left-recursive rules - DISABLED: causes infinite loop on complex grammars
-        // TODO: Fix the work stack algorithm to avoid exponential path exploration
-        // let left_recursive_rules = find_left_recursive_rules(grammar, &rule_map, &recursive_rules);
-        let left_recursive_rules = HashSet::new();
+        // Find left-recursive rules (using fixpoint iteration - fixed exponential explosion issue)
+        let left_recursive_rules = find_left_recursive_rules(grammar, &rule_map, &recursive_rules);
 
         // Categorize rules by mark
         let mut hidden_rules = HashSet::new();
@@ -419,115 +417,169 @@ fn find_left_recursive_rules(
     left_recursive
 }
 
-/// Check if a rule is left-recursive (fully iterative version)
+/// Check if a rule is left-recursive using fixpoint iteration
+/// This computes the "left-reachable set" - which nonterminals can appear
+/// at the leftmost position (accounting for nullable prefixes)
 fn is_left_recursive(
     rule_name: &str,
     alternatives: &Alternatives,
     rule_map: &HashMap<String, &Rule>,
 ) -> bool {
-    // Precompute nullable set once for all checks
+    // Precompute nullable set once
     let nullable_set = compute_nullable_set(rule_map);
 
-    // Work stack: (current_rule_name, alternative_index, factor_index, visited_set)
-    type WorkItem<'a> = (&'a str, usize, usize, HashSet<String>);
-    let mut work_stack: Vec<WorkItem> = Vec::new();
+    // Compute left-reachable nonterminals for this rule
+    let left_reachable = compute_left_reachable(rule_name, alternatives, rule_map, &nullable_set);
 
-    // Start with all alternatives of the target rule
-    for (alt_idx, _) in alternatives.alts.iter().enumerate() {
-        work_stack.push((rule_name, alt_idx, 0, HashSet::new()));
-    }
+    // Left-recursive if rule can reach itself
+    left_reachable.contains(rule_name)
+}
 
-    while let Some((current_rule, alt_idx, factor_idx, mut visited)) = work_stack.pop() {
-        // Get the rule and alternative
-        let rule = match rule_map.get(current_rule) {
-            Some(r) => r,
-            None => continue,
-        };
+/// Compute which nonterminals can appear at the leftmost position
+/// (accounting for nullable prefixes) using fixpoint iteration
+fn compute_left_reachable(
+    rule_name: &str,
+    alternatives: &Alternatives,
+    rule_map: &HashMap<String, &Rule>,
+    nullable_set: &HashSet<String>,
+) -> HashSet<String> {
+    let mut reachable = HashSet::new();
+    let mut changed = true;
 
-        if alt_idx >= rule.alternatives.alts.len() {
-            continue;
-        }
+    // Iterate until fixpoint (no more changes)
+    while changed {
+        changed = false;
 
-        let alt = &rule.alternatives.alts[alt_idx];
+        // For each alternative
+        for alt in &alternatives.alts {
+            // Process factors in sequence
+            for factor in &alt.factors {
+                match &factor.base {
+                    BaseFactor::Nonterminal { name, .. } => {
+                        // This nonterminal is left-reachable
+                        if reachable.insert(name.clone()) {
+                            changed = true;
+                        }
 
-        // Process factors from factor_idx onwards
-        for (idx, factor) in alt.factors.iter().enumerate().skip(factor_idx) {
-            match &factor.base {
-                BaseFactor::Nonterminal { name, .. } => {
-                    // Direct left-recursion found!
-                    if name == rule_name {
-                        return true;
-                    }
+                        // If we can reach a rule, we can reach what IT can reach
+                        if let Some(ref_rule) = rule_map.get(name.as_str()) {
+                            let ref_reachable = compute_left_reachable_direct(
+                                &ref_rule.alternatives,
+                                nullable_set
+                            );
+                            for ref_name in ref_reachable {
+                                if reachable.insert(ref_name) {
+                                    changed = true;
+                                }
+                            }
+                        }
 
-                    // Avoid infinite loops
-                    if visited.contains(name) {
-                        // Skip this path, continue with next alternative
-                        break;
-                    }
-
-                    // Check if this nonterminal can derive the target rule
-                    // Push work to check all alternatives of this nonterminal
-                    if let Some(ref_rule) = rule_map.get(name.as_str()) {
-                        let mut new_visited = visited.clone();
-                        new_visited.insert(name.clone());
-
-                        for (ref_alt_idx, _) in ref_rule.alternatives.alts.iter().enumerate() {
-                            work_stack.push((name.as_str(), ref_alt_idx, 0, new_visited.clone()));
+                        // If not nullable, stop here
+                        if !nullable_set.contains(name) {
+                            break;
                         }
                     }
+                    BaseFactor::Literal { value, .. } => {
+                        // Empty literals are nullable, continue
+                        if !value.is_empty() {
+                            break;
+                        }
+                    }
+                    BaseFactor::CharClass { .. } => {
+                        // Character classes block
+                        break;
+                    }
+                    BaseFactor::Group { alternatives: group_alts } => {
+                        // Inline group analysis
+                        let group_reachable = compute_left_reachable_direct(group_alts, nullable_set);
+                        for name in group_reachable {
+                            if reachable.insert(name) {
+                                changed = true;
+                            }
+                        }
 
-                    // If not nullable, can't continue past this factor
+                        // If group not nullable, stop
+                        if !is_alternatives_nullable(group_alts, nullable_set) {
+                            break;
+                        }
+                    }
+                }
+
+                // Check if factor is nullable via repetition
+                match factor.repetition {
+                    Repetition::ZeroOrMore | Repetition::Optional | Repetition::SeparatedZeroOrMore(_) => {
+                        // Nullable, continue to next factor
+                        continue;
+                    }
+                    _ => {
+                        // If base was nullable, we already handled it above
+                        // If not nullable and required, we already broke
+                    }
+                }
+            }
+        }
+    }
+
+    reachable
+}
+
+/// Compute left-reachable nonterminals for alternatives (one pass, no recursion)
+fn compute_left_reachable_direct(
+    alternatives: &Alternatives,
+    nullable_set: &HashSet<String>,
+) -> HashSet<String> {
+    let mut reachable = HashSet::new();
+
+    for alt in &alternatives.alts {
+        for factor in &alt.factors {
+            match &factor.base {
+                BaseFactor::Nonterminal { name, .. } => {
+                    reachable.insert(name.clone());
+
+                    // If not nullable, stop here
                     if !nullable_set.contains(name) {
                         break;
                     }
                 }
                 BaseFactor::Literal { value, .. } => {
-                    // Empty literals are nullable, others block
                     if !value.is_empty() {
                         break;
                     }
                 }
                 BaseFactor::CharClass { .. } => {
-                    // Character classes are never nullable, block here
                     break;
                 }
                 BaseFactor::Group { alternatives: group_alts } => {
-                    // Check if group alternatives can start with target
-                    for (group_alt_idx, _) in group_alts.alts.iter().enumerate() {
-                        // Create a temporary rule for the group
-                        work_stack.push((current_rule, group_alt_idx, 0, visited.clone()));
-                    }
+                    // Recursively get group's reachable (bounded depth)
+                    let group_reachable = compute_left_reachable_direct(group_alts, nullable_set);
+                    reachable.extend(group_reachable);
 
-                    // Check if group is nullable
-                    let mut group_nullable = false;
-                    for group_alt in &group_alts.alts {
-                        let mut alt_nullable = true;
-                        for group_factor in &group_alt.factors {
-                            if !is_factor_nullable_simple(group_factor, &nullable_set) {
-                                alt_nullable = false;
-                                break;
-                            }
-                        }
-                        if alt_nullable {
-                            group_nullable = true;
-                            break;
-                        }
-                    }
-
-                    if !group_nullable {
+                    if !is_alternatives_nullable(group_alts, nullable_set) {
                         break;
                     }
                 }
             }
 
-            // Check if this factor is nullable
-            if !is_factor_nullable_simple(factor, &nullable_set) {
-                break;
+            // Check repetition
+            match factor.repetition {
+                Repetition::ZeroOrMore | Repetition::Optional | Repetition::SeparatedZeroOrMore(_) => {
+                    continue;
+                }
+                _ => {
+                    // Already handled blocking above
+                }
             }
         }
     }
 
-    false
+    reachable
+}
+
+/// Check if alternatives are nullable (any alternative is nullable)
+fn is_alternatives_nullable(alternatives: &Alternatives, nullable_set: &HashSet<String>) -> bool {
+    alternatives.alts.iter().any(|alt| {
+        alt.factors.iter().all(|f| is_factor_nullable_simple(f, nullable_set))
+    })
 }
 
 /// Compute nullable set for all rules using fixpoint iteration (completely iterative)
