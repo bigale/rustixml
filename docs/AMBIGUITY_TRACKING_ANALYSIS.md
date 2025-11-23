@@ -113,7 +113,7 @@ Input: `x     ` (5 spaces) → Potentially hundreds of valid parses
 
 ### The Basic Tests Might Pass But...
 
-The conformance tests are **carefully constructed examples** with limited ambiguity depth. Real-world grammars (like the EDI X12 grammars we're targeting) could have:
+The conformance tests are **carefully constructed examples** with limited ambiguity depth. Real-world grammars could have:
 
 - Deeply nested optional elements
 - Multiple nullable sequences
@@ -161,7 +161,7 @@ This gives users actionable information without the complexity and performance c
 
 ### Future (If Needed)
 
-1. Analyze real-world EDI grammar ambiguity patterns
+1. Analyze real-world grammar ambiguity patterns
 2. Implement selective exhaustive parsing (only for flagged ambiguous grammars)
 3. Add depth/parse-count limits to prevent combinatorial explosion
 4. Benchmark on pathological cases
