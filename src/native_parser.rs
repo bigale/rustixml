@@ -6,6 +6,7 @@
 
 use crate::ast::{Alternatives, BaseFactor, Factor, IxmlGrammar, Mark, Repetition, Rule, Sequence};
 use crate::charclass::charclass_to_rangeset;
+use crate::grammar_analysis::GrammarAnalysis;
 use crate::input_stream::InputStream;
 use crate::parse_context::{ParseContext, ParseError, ParseResult};
 use crate::xml_node::XmlNode;
@@ -15,11 +16,20 @@ use std::collections::HashMap;
 pub struct NativeParser {
     grammar: IxmlGrammar,
     rules: HashMap<String, Rule>,
+    analysis: GrammarAnalysis,
 }
 
 impl NativeParser {
     /// Create a new native parser from an iXML grammar
     pub fn new(grammar: IxmlGrammar) -> Self {
+        // Analyze grammar using iterative algorithms (no stack overflow)
+        let analysis = GrammarAnalysis::analyze(&grammar);
+        let report = analysis.report();
+        if !report.contains("No issues") {
+            eprintln!("[rustixml] Grammar analysis:");
+            eprintln!("{}", report);
+        }
+
         // Build rule lookup table for O(1) access
         let rules: HashMap<String, Rule> = grammar
             .rules
@@ -27,7 +37,11 @@ impl NativeParser {
             .map(|rule| (rule.name.clone(), rule.clone()))
             .collect();
 
-        NativeParser { grammar, rules }
+        NativeParser {
+            grammar,
+            rules,
+            analysis,
+        }
     }
 
     /// Get the number of rules in the grammar
@@ -61,7 +75,11 @@ impl NativeParser {
                 }
 
                 // Convert node to XML string
-                if let Some(node) = result.node {
+                if let Some(mut node) = result.node {
+                    // If grammar is potentially ambiguous, add ixml:state="ambiguous" to root element
+                    if self.analysis.is_potentially_ambiguous {
+                        node = self.add_ambiguity_marker(node);
+                    }
                     Ok(node.to_xml())
                 } else {
                     Err("Parse succeeded but produced no output (fully suppressed)".to_string())
@@ -879,6 +897,39 @@ impl NativeParser {
 
         // Return collected nodes (merged if they're all text)
         Ok(ParseResult::new(self.merge_nodes(children), total_consumed))
+    }
+
+    /// Add ixml:state="ambiguous" attribute to root element for ambiguous grammars
+    fn add_ambiguity_marker(&self, node: XmlNode) -> XmlNode {
+        match node {
+            XmlNode::Element {
+                name,
+                mut attributes,
+                children,
+            } => {
+                // Add ixml:state attribute first (order matters for test comparison)
+                attributes.push(("ixml:state".to_string(), "ambiguous".to_string()));
+
+                // Add xmlns:ixml namespace declaration if not already present
+                if !attributes
+                    .iter()
+                    .any(|(k, _)| k == "xmlns:ixml")
+                {
+                    attributes.push((
+                        "xmlns:ixml".to_string(),
+                        "http://invisiblexml.org/NS".to_string(),
+                    ));
+                }
+
+                XmlNode::Element {
+                    name,
+                    attributes,
+                    children,
+                }
+            }
+            // If not an element (shouldn't happen for root), return as-is
+            other => other,
+        }
     }
 }
 

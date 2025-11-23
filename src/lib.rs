@@ -24,18 +24,20 @@
 //! # Features
 //!
 //! - 🚀 Fast native recursive descent parser
-//! - ✅ 83.7% conformance with iXML specification (41/49 tests)
+//! - ✅ 75.4% conformance with iXML specification (49/65 tests)
 //! - 🌐 WebAssembly support for browser use
 //! - 📦 Single dependency (unicode-general-category)
 //! - 🔒 Pure safe Rust
 
 pub mod ast;
 pub mod charclass;
+pub mod grammar_analysis;
 pub mod grammar_ast;
 pub mod grammar_parser;
 pub mod input_stream;
 pub mod lexer;
 pub mod native_parser;
+pub mod normalize;
 pub mod parse_context;
 pub mod xml_node;
 

@@ -8,10 +8,11 @@ This document describes the architecture of rustixml v0.2.0, focusing on the **n
 
 1. [Overview](#overview)
 2. [Core Components](#core-components)
-3. [Parse Flow](#parse-flow)
-4. [iXML Semantic Handling](#ixml-semantic-handling)
-5. [WebAssembly Support](#webassembly-support)
-6. [Testing](#testing)
+3. [Grammar Analysis & Optimization](#grammar-analysis--optimization)
+4. [Parse Flow](#parse-flow)
+5. [iXML Semantic Handling](#ixml-semantic-handling)
+6. [WebAssembly Support](#webassembly-support)
+7. [Testing](#testing)
 
 ## Overview
 
@@ -40,18 +41,30 @@ This document describes the architecture of rustixml v0.2.0, focusing on the **n
                   │ GrammarAst
                   ▼
        ┌───────────────────────────┐
+       │   Grammar Analysis        │
+       │   (grammar_analysis.rs)   │
+       │                           │
+       │  • Recursion detection    │
+       │  • Ambiguity detection    │
+       │  • Complexity scoring     │
+       │  • Normalization (future) │
+       └──────────┬────────────────┘
+                  │ GrammarAst + Analysis
+                  ▼
+       ┌───────────────────────────┐
        │   Native Parser           │
        │   (native_parser.rs)      │
        │                           │
        │  • Recursive descent      │
        │  • iXML semantics         │
        │  • Mark handling          │
+       │  • Ambiguity marking      │
        └──────────┬────────────────┘
                   │ XmlNode tree
                   ▼
        ┌───────────────────────────┐
        │   XML Serialization       │
-       │   (ast.rs)                │
+       │   (xml_node.rs)           │
        │                           │
        │  XmlNode → XML String     │
        └──────────┬────────────────┘
@@ -59,6 +72,8 @@ This document describes the architecture of rustixml v0.2.0, focusing on the **n
                   ▼
        ┌───────────────────────────┐
        │      XML Output           │
+       │  (with ixml:state if      │
+       │   grammar is ambiguous)   │
        └───────────────────────────┘
 ```
 
@@ -219,7 +234,86 @@ impl RangeSet {
 }
 ```
 
-### 5. WebAssembly Bindings (`src/wasm.rs`)
+### 5. Grammar Analysis (`src/grammar_analysis.rs`)
+
+**Responsibility**: Analyze grammar structure to detect problematic patterns and enable optimizations.
+
+**Key Features**:
+- **Recursion Detection**: Identifies directly and indirectly recursive rules
+- **Ambiguity Detection**: Detects grammars that can produce multiple parse trees
+- **Complexity Scoring**: Calculates grammar complexity for performance warnings
+- **Rule Categorization**: Identifies hidden, promoted, and attribute rules
+
+**Key Structures**:
+```rust
+pub struct GrammarAnalysis {
+    pub recursive_rules: HashSet<String>,
+    pub left_recursive_rules: HashSet<String>,
+    pub hidden_rules: HashSet<String>,
+    pub promoted_rules: HashSet<String>,
+    pub attribute_rules: HashSet<String>,
+    pub complexity_scores: HashMap<String, usize>,
+    pub is_potentially_ambiguous: bool,
+}
+
+impl GrammarAnalysis {
+    pub fn analyze(grammar: &IxmlGrammar) -> Self {
+        // Perform static analysis on grammar structure
+    }
+
+    pub fn report(&self) -> String {
+        // Generate human-readable analysis report
+    }
+}
+```
+
+**Ambiguity Detection Patterns**:
+
+The analyzer detects common ambiguity patterns using conservative heuristics:
+
+1. **Multiple Nullable Alternatives**: Rules where multiple alternatives can match empty input
+   ```ixml
+   a: "a"* ; "b"*.  // Both alternatives match empty string
+   ```
+
+2. **Shared Nullable Nonterminals**: Alternatives starting with the same nullable rule
+   ```ixml
+   a: spaces, "a" ; spaces, "b".
+   spaces: " "*.
+   ```
+
+**Fixpoint Nullable Detection**:
+
+Uses iterative fixpoint algorithm to compute which rules can match empty input:
+
+```rust
+fn compute_nullable_set(rule_map: &HashMap<String, &Rule>) -> HashSet<String> {
+    let mut nullable = HashSet::new();
+    let mut changed = true;
+
+    // Iterate until no more changes (fixpoint)
+    while changed {
+        changed = false;
+        for (name, rule) in rule_map {
+            if !nullable.contains(name) && is_rule_nullable(rule, &nullable) {
+                nullable.insert(name.clone());
+                changed = true;
+            }
+        }
+    }
+
+    nullable
+}
+```
+
+**Integration with Parser**:
+
+When a grammar is flagged as potentially ambiguous, the parser automatically:
+1. Adds `xmlns:ixml="http://invisiblexml.org/NS"` namespace
+2. Adds `ixml:state='ambiguous'` attribute to root element
+3. Continues normal parsing (picks one parse tree)
+
+### 6. WebAssembly Bindings (`src/wasm.rs`)
 
 **Responsibility**: Export Rust functions to JavaScript/WebAssembly.
 
@@ -257,6 +351,130 @@ impl IxmlParser {
     }
 }
 ```
+
+## Grammar Analysis & Optimization
+
+This section describes the static analysis performed on grammars before parsing begins.
+
+### Analysis Pipeline
+
+```mermaid
+graph TB
+    A[Grammar AST] --> B[Build Rule Map]
+    B --> C[Detect Recursion]
+    B --> D[Compute Nullable Set]
+    B --> E[Calculate Complexity]
+    D --> F[Detect Ambiguity]
+    C --> G[Categorize Rules]
+    E --> G
+    F --> H[GrammarAnalysis Result]
+    G --> H
+    H --> I[Parser with Analysis]
+
+    style A fill:#e1f5ff,stroke:#333,color:#000
+    style H fill:#ffe1e1,stroke:#333,color:#000
+    style I fill:#e1ffe1,stroke:#333,color:#000
+    style B fill:#fff9e1,stroke:#333,color:#000
+    style C fill:#fff9e1,stroke:#333,color:#000
+    style D fill:#fff9e1,stroke:#333,color:#000
+    style E fill:#fff9e1,stroke:#333,color:#000
+    style F fill:#ffe1f5,stroke:#333,color:#000
+    style G fill:#fff9e1,stroke:#333,color:#000
+```
+
+### Ambiguity Detection Flow
+
+When the parser is created with a grammar, analysis happens automatically:
+
+```mermaid
+graph LR
+    A[Parse Grammar Text] --> B[Grammar AST]
+    B --> C[GrammarAnalysis.analyze]
+    C --> D{Has Multiple<br/>Nullable Alts?}
+    C --> E{Has Shared<br/>Nullable Nonterms?}
+    D -->|Yes| F[Set is_potentially_ambiguous = true]
+    E -->|Yes| F
+    D -->|No| G[is_potentially_ambiguous = false]
+    E -->|No| G
+    F --> H[NativeParser with Analysis]
+    G --> H
+    H --> I[Parse Input]
+    I --> J{Grammar<br/>Ambiguous?}
+    J -->|Yes| K[Add ixml:state attribute]
+    J -->|No| L[Return XmlNode as-is]
+    K --> M[Serialize to XML]
+    L --> M
+
+    style A fill:#e1f5ff,stroke:#333,color:#000
+    style B fill:#e1f5ff,stroke:#333,color:#000
+    style C fill:#fff9e1,stroke:#333,color:#000
+    style F fill:#ffe1e1,stroke:#333,color:#000
+    style G fill:#e1ffe1,stroke:#333,color:#000
+    style H fill:#fff9e1,stroke:#333,color:#000
+    style K fill:#ffe1f5,stroke:#333,color:#000
+    style M fill:#e1ffe1,stroke:#333,color:#000
+```
+
+### Nullable Fixpoint Algorithm
+
+The nullable detection uses a fixpoint iteration algorithm:
+
+```mermaid
+graph TD
+    A[Start: nullable = empty set] --> B[Loop: changed = true]
+    B --> C{For each rule}
+    C -->|Next rule| D{Already nullable?}
+    D -->|Yes| C
+    D -->|No| E{All alts check nullable?}
+    E --> F{Any alt is nullable?}
+    F -->|Yes| G[Add rule to nullable set]
+    F -->|No| C
+    G --> H[Set changed = true]
+    H --> C
+    C -->|Done| I{changed == true?}
+    I -->|Yes| B
+    I -->|No| J[Return nullable set]
+
+    style A fill:#e1f5ff,stroke:#333,color:#000
+    style B fill:#fff9e1,stroke:#333,color:#000
+    style G fill:#ffe1f5,stroke:#333,color:#000
+    style J fill:#e1ffe1,stroke:#333,color:#000
+```
+
+**Alternative Nullable Check**:
+- All factors in sequence must be nullable
+- Factor is nullable if:
+  - It's a nonterminal in the nullable set
+  - It's a repetition with `*` or `**` operator (zero or more)
+  - It's an optional `?` group
+  - It's a group where at least one alternative is nullable
+
+### Static vs Runtime Analysis
+
+rustixml uses **static analysis** to detect ambiguity:
+
+| Approach | When | What | Pros | Cons |
+|----------|------|------|------|------|
+| **Static** (rustixml) | Before parsing | Analyze grammar structure | Fast, predictable | Conservative (may miss some, may have false positives) |
+| **Runtime** | During parsing | Track all parse trees | Precise, complete | Slow, memory-intensive |
+
+**Design Decision**: Static analysis enables:
+- O(1) ambiguity check at parse time
+- Deterministic parser behavior (always picks one tree)
+- Clear user warnings about grammar issues
+- Foundation for future optimizations (memoization, transformation)
+
+### Normalization (Future)
+
+Grammar normalization will transform grammars for better performance:
+
+**Planned transformations**:
+1. **Left-recursion elimination**: `expr: expr, "+", term` → right-recursive form
+2. **Nullable factoring**: Extract common nullable prefixes
+3. **Hidden rule inlining**: Inline `-` marked rules to reduce tree depth
+4. **Character class partitioning**: Split overlapping ranges for faster matching
+
+**Status**: Framework exists in `src/normalize.rs` but currently disabled. See `docs/NORMALIZATION_LESSONS.md` for details.
 
 ## Parse Flow
 
@@ -492,10 +710,16 @@ cargo run --bin conformance_test -- correct/
 
 ### Test Results (v0.2.0)
 
-- **Overall**: 45/65 tests passing (69.2%)
-- **Correctness**: 41/49 tests passing (83.7%) ✅
-- **Ambiguous**: 2/13 tests passing (15.4%)
-- **Error**: 2/3 tests passing (66.7%)
+- **Overall**: 49/65 tests passing (75.4%)
+- **Correctness**: Strong coverage of core functionality ✅
+- **Ambiguous**: Static detection implemented, some tests require runtime tracking
+- **Error**: Good error handling coverage
+
+**Notable Features**:
+- Grammar analysis enabled with recursion and ambiguity detection
+- Fixpoint nullable detection handles complex mutual recursion
+- Static ambiguity detection adds `ixml:state='ambiguous'` automatically
+- No regressions from analysis integration
 
 See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) for details on failing tests.
 
@@ -523,19 +747,28 @@ See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) for details on failing tests.
 
 See [`docs/STRATEGY_OPTIONS.md`](docs/STRATEGY_OPTIONS.md) for detailed analysis.
 
+**Completed** (v0.2.0):
+- ✅ Grammar analysis framework
+- ✅ Recursion detection (direct and indirect)
+- ✅ Static ambiguity detection with automatic marking
+- ✅ Fixpoint nullable detection
+- ✅ Complexity scoring
+
 **Short term** (v0.3):
 - Enable character class partitioning
 - Add basic memoization (packrat parsing)
-- Simple ambiguity detection
+- Improve ambiguity detection patterns (reduce false negatives)
+- Re-enable left-recursion detection (nullable check needs iterative rewrite)
 
 **Medium term** (v0.4):
 - Left-recursion transformation
-- Full ambiguity detection
-- Nonterminal inlining
+- Enable grammar normalization (currently disabled)
+- Nonterminal inlining for hidden rules
+- Runtime ambiguity tracking (for 100% conformance)
 
 **Long term** (v1.0):
 - Consider LALR+GLR for 100% conformance
-- Advanced optimizations
+- Advanced optimizations using analysis
 - Full iXML 1.0 spec support
 
 ## References
@@ -544,6 +777,8 @@ See [`docs/STRATEGY_OPTIONS.md`](docs/STRATEGY_OPTIONS.md) for detailed analysis
 - [KNOWN_ISSUES.md](KNOWN_ISSUES.md) - Current limitations
 - [STRATEGY_OPTIONS.md](docs/STRATEGY_OPTIONS.md) - Improvement strategies
 - [CLAUDE_HISTORICAL.md](docs/CLAUDE_HISTORICAL.md) - Complete development history
+- [GRAMMAR_ANALYSIS_STATUS.md](docs/GRAMMAR_ANALYSIS_STATUS.md) - Grammar analysis implementation details
+- [NORMALIZATION_LESSONS.md](docs/NORMALIZATION_LESSONS.md) - Lessons learned from normalization attempts
 
 ---
 

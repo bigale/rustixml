@@ -56,8 +56,29 @@ impl Parser {
         char::from_u32(code_point).ok_or_else(|| format!("Invalid Unicode code point: #{}", hex))
     }
 
-    // Grammar: Rule+
+    // Grammar: [VersionDecl] Rule+
     pub fn parse_grammar(&mut self) -> Result<IxmlGrammar, String> {
+        // Check for optional ixml version "1.0"
+        if self.tokens.get(self.pos) == Some(&Token::Ident("ixml".to_string()))
+            && self.tokens.get(self.pos + 1) == Some(&Token::Ident("version".to_string()))
+        {
+            // It's a version declaration. Let's parse it fully.
+            self.consume(); // ixml
+            self.consume(); // version
+
+            match self.expect("version string")? {
+                Token::String(_) => {
+                    // Any version string is accepted by the parser.
+                }
+                other => return Err(format!("Expected version string, got {:?}", other)),
+            }
+
+            if !self.matches(&Token::Period) {
+                return Err("Expected '.' after version declaration".to_string());
+            }
+            self.consume(); // consume '.'
+        }
+
         let mut rules = Vec::new();
 
         while !self.at_end() {
@@ -71,7 +92,7 @@ impl Parser {
         Ok(IxmlGrammar::new(rules))
     }
 
-    // Rule: [Mark] Ident ":" Alternatives "."
+    // Rule: [Mark] Ident (":" | "=") Alternatives "."
     fn parse_rule(&mut self) -> Result<Rule, String> {
         // Check for mark prefix
         let mark = if self.matches(&Token::At) {
@@ -93,9 +114,9 @@ impl Parser {
             other => return Err(format!("Expected identifier, got {:?}", other)),
         };
 
-        // Expect colon
-        if !self.matches(&Token::Colon) {
-            return Err(format!("Expected ':' after rule name '{}'", name));
+        // Expect colon or equals
+        if !self.matches(&Token::Colon) && !self.matches(&Token::Equals) {
+            return Err(format!("Expected ':' or '=' after rule name '{}'", name));
         }
         self.consume();
 
@@ -260,11 +281,18 @@ impl Parser {
                 other => Err(format!("Expected string, hex char, character class, or identifier after mark, got {:?}", other)),
             }
         } else if self.matches(&Token::Plus) {
-            // Insertion: +string
+            // Insertion: +string or +hexchar
             self.consume();
-            match self.expect("string after '+'")? {
+            match self.expect("string or hex char after '+'")? {
                 Token::String(s) => Ok(BaseFactor::insertion(s)),
-                other => Err(format!("Expected string after '+', got {:?}", other)),
+                Token::HexChar(h) => {
+                    let ch = Self::hex_to_char(&h)?;
+                    Ok(BaseFactor::insertion(ch.to_string()))
+                }
+                other => Err(format!(
+                    "Expected string or hex char after '+', got {:?}",
+                    other
+                )),
             }
         } else if self.matches(&Token::Tilde) {
             // Exclusion: ~[charclass]
