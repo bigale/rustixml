@@ -15,8 +15,10 @@
 //! Reference: https://homepages.cwi.nl/~steven/Talks/2016/02-12-prague/data.html
 
 use crate::ast::{
-    Alternatives, BaseFactor, Factor, IxmlGrammar, Mark, Repetition, Rule, Sequence,
+    Alternatives, BaseFactor, Factor, IxmlGrammar, Mark, Rule, Sequence,
 };
+#[cfg(test)]
+use crate::ast::Repetition;
 use std::collections::{HashMap, HashSet};
 
 /// Normalize an iXML grammar by inlining non-recursive rules
@@ -195,7 +197,8 @@ fn inline_in_sequence(
 /// Result of inlining a factor
 enum InlineResult {
     Keep(Factor),          // Keep the factor as-is
-    Replace(Vec<Factor>),  // Replace with multiple factors
+    #[allow(dead_code)]
+    Replace(Vec<Factor>),  // Replace with multiple factors (reserved for future use)
 }
 
 /// Inline a factor if it's a non-recursive nonterminal
@@ -258,7 +261,7 @@ fn inline_factor(
 }
 
 /// Apply a mark to a base factor (simplified - full implementation would be more complex)
-fn apply_mark_to_base(base: BaseFactor, mark: Mark) -> BaseFactor {
+fn apply_mark_to_base(base: BaseFactor, _mark: Mark) -> BaseFactor {
     match base {
         BaseFactor::Group { alternatives } => {
             // For groups, we can't directly apply the mark

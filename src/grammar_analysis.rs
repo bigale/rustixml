@@ -10,6 +10,7 @@ use crate::ast::{Alternatives, BaseFactor, Factor, IxmlGrammar, Mark, Repetition
 use std::collections::{HashMap, HashSet};
 
 /// Maximum recursion depth for grammar analysis to prevent stack overflow
+#[allow(dead_code)]
 const MAX_ANALYSIS_DEPTH: usize = 20;
 
 /// Analysis results for an iXML grammar
@@ -194,7 +195,7 @@ fn find_recursive_rules(
 fn detect_ambiguity_patterns(
     grammar: &IxmlGrammar,
     rule_map: &HashMap<String, &Rule>,
-    recursive_rules: &HashSet<String>,
+    _recursive_rules: &HashSet<String>,
 ) -> bool {
     // Compute nullable set once for reuse
     let nullable_set = compute_nullable_set(rule_map);
@@ -438,7 +439,7 @@ fn is_left_recursive(
 /// Compute which nonterminals can appear at the leftmost position
 /// (accounting for nullable prefixes) using fixpoint iteration
 fn compute_left_reachable(
-    rule_name: &str,
+    _rule_name: &str,
     alternatives: &Alternatives,
     rule_map: &HashMap<String, &Rule>,
     nullable_set: &HashSet<String>,
@@ -691,6 +692,7 @@ fn is_factor_nullable_simple(factor: &Factor, nullable_rules: &HashSet<String>) 
 }
 
 /// Check if alternatives can match empty string (nullable) - uses precomputed set
+#[allow(dead_code)]
 fn is_nullable(
     alternatives: &Alternatives,
     rule_map: &HashMap<String, &Rule>,
@@ -717,6 +719,7 @@ fn is_nullable(
 }
 
 /// Fully iterative nullable check with memoization cache
+#[allow(dead_code)]
 fn is_nullable_with_cache(
     alternatives: &Alternatives,
     rule_map: &HashMap<String, &Rule>,
@@ -737,6 +740,7 @@ fn is_nullable_with_cache(
 }
 
 /// Check if sequence is nullable with caching
+#[allow(dead_code)]
 fn is_sequence_nullable_with_cache(
     seq: &Sequence,
     rule_map: &HashMap<String, &Rule>,
@@ -757,6 +761,7 @@ fn is_sequence_nullable_with_cache(
 }
 
 /// Check if factor is nullable with caching and depth limiting
+#[allow(dead_code)]
 fn is_factor_nullable_with_cache(
     factor: &Factor,
     rule_map: &HashMap<String, &Rule>,
@@ -812,6 +817,7 @@ fn is_factor_nullable_with_cache(
 }
 
 /// Iterative helper for checking if a sequence is nullable (kept for compatibility)
+#[allow(dead_code)]
 fn is_sequence_nullable_iterative(
     seq: &Sequence,
     rule_map: &HashMap<String, &Rule>,
@@ -822,6 +828,7 @@ fn is_sequence_nullable_iterative(
 }
 
 /// Iterative helper for checking if a factor is nullable (uses precomputed set)
+#[allow(dead_code)]
 fn is_factor_nullable_iterative(
     factor: &Factor,
     rule_map: &HashMap<String, &Rule>,
@@ -832,6 +839,7 @@ fn is_factor_nullable_iterative(
 }
 
 /// Check if a sequence can match empty string
+#[allow(dead_code)]
 fn is_sequence_nullable(
     seq: &Sequence,
     rule_map: &HashMap<String, &Rule>,
@@ -850,6 +858,7 @@ fn is_sequence_nullable(
 }
 
 /// Check if a factor can match empty string
+#[allow(dead_code)]
 fn is_factor_nullable(
     factor: &Factor,
     rule_map: &HashMap<String, &Rule>,
@@ -900,6 +909,7 @@ fn is_factor_nullable(
 }
 
 /// Helper functions from normalize.rs
+#[allow(dead_code)]
 fn check_alternatives_for_recursion(
     alternatives: &Alternatives,
     target_rule: &str,
@@ -920,6 +930,7 @@ fn check_alternatives_for_recursion(
     false
 }
 
+#[allow(dead_code)]
 fn check_sequence_for_recursion(
     seq: &Sequence,
     target_rule: &str,
@@ -940,6 +951,7 @@ fn check_sequence_for_recursion(
     false
 }
 
+#[allow(dead_code)]
 fn check_factor_for_recursion(
     factor: &Factor,
     target_rule: &str,
@@ -1099,7 +1111,7 @@ fn normalize_sequence(
 
     result_sequences
         .into_iter()
-        .map(|factors| Sequence::new(factors))
+        .map(Sequence::new)
         .collect()
 }
 

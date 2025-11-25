@@ -399,10 +399,9 @@ pub fn unicode_category_to_rangeset(category_name: &str) -> Option<RangeSet> {
             // iXML special rule: exclude newline characters (#a = U+000A, #d = U+000D)
             // from control character categories, even though Unicode categorizes them as Cc.
             // This allows grammars to handle newlines separately for line-oriented parsing.
-            if is_match && matches!(category_name, "Cc" | "C") {
-                if ch == '\n' || ch == '\r' {
-                    is_match = false;
-                }
+            if is_match && matches!(category_name, "Cc" | "C")
+                && (ch == '\n' || ch == '\r') {
+                is_match = false;
             }
 
             if is_match {

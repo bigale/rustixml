@@ -113,9 +113,9 @@ fn main() {
 }
 
 fn read_arg(arg: &str) -> String {
-    if arg.starts_with('!') {
+    if let Some(stripped) = arg.strip_prefix('!') {
         // Literal (preceded by !)
-        arg[1..].to_string()
+        stripped.to_string()
     } else {
         // File path or URL
         fs::read_to_string(arg).unwrap_or_else(|e| {

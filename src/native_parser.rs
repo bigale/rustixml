@@ -179,7 +179,7 @@ impl NativeParser {
             // Check if we grew the parse
             let grew = match (&seed, &final_result) {
                 // Grew from failure to success
-                (Err(_), Ok(new_result)) => {
+                (Err(_), Ok(_new_result)) => {
                     seed = final_result.clone();
                     ctx.memo_cache.insert(memo_key.clone(), seed.clone());
                     true
