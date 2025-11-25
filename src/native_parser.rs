@@ -171,7 +171,10 @@ impl NativeParser {
 
             // Re-add to recursion stack
             let re_entered = ctx.enter_rule(&rule.name, start_pos);
-            debug_assert!(!re_entered, "Should not be able to re-enter during seed-growing");
+            debug_assert!(
+                !re_entered,
+                "Should not be able to re-enter during seed-growing"
+            );
 
             // Apply rule-level mark to result
             let final_result = result.map(|res| self.apply_rule_mark(res, rule));
@@ -993,10 +996,7 @@ impl NativeParser {
                 attributes.push(("ixml:state".to_string(), "ambiguous".to_string()));
 
                 // Add xmlns:ixml namespace declaration if not already present
-                if !attributes
-                    .iter()
-                    .any(|(k, _)| k == "xmlns:ixml")
-                {
+                if !attributes.iter().any(|(k, _)| k == "xmlns:ixml") {
                     attributes.push((
                         "xmlns:ixml".to_string(),
                         "http://invisiblexml.org/NS".to_string(),

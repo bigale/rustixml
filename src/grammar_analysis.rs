@@ -41,11 +41,8 @@ pub struct GrammarAnalysis {
 impl GrammarAnalysis {
     /// Analyze an iXML grammar
     pub fn analyze(grammar: &IxmlGrammar) -> Self {
-        let rule_map: HashMap<String, &Rule> = grammar
-            .rules
-            .iter()
-            .map(|r| (r.name.clone(), r))
-            .collect();
+        let rule_map: HashMap<String, &Rule> =
+            grammar.rules.iter().map(|r| (r.name.clone(), r)).collect();
 
         // Find recursive rules (using iterative algorithm)
         let recursive_rules = find_recursive_rules(grammar, &rule_map);
@@ -92,11 +89,8 @@ impl GrammarAnalysis {
             .collect();
 
         // Detect potentially ambiguous patterns using normalized grammar
-        let is_potentially_ambiguous = detect_ambiguity_patterns(
-            &normalized,
-            &normalized_map,
-            &recursive_rules,
-        );
+        let is_potentially_ambiguous =
+            detect_ambiguity_patterns(&normalized, &normalized_map, &recursive_rules);
 
         GrammarAnalysis {
             recursive_rules,
@@ -298,7 +292,10 @@ fn could_start_with_nullable(
                         continue;
                     }
                     // Recursively check first factor
-                    if let BaseFactor::Nonterminal { name: first_name, .. } = &alt.factors[0].base {
+                    if let BaseFactor::Nonterminal {
+                        name: first_name, ..
+                    } = &alt.factors[0].base
+                    {
                         if first_name == nullable_name && nullable_set.contains(nullable_name) {
                             return true;
                         }
@@ -464,10 +461,8 @@ fn compute_left_reachable(
 
                         // If we can reach a rule, we can reach what IT can reach
                         if let Some(ref_rule) = rule_map.get(name.as_str()) {
-                            let ref_reachable = compute_left_reachable_direct(
-                                &ref_rule.alternatives,
-                                nullable_set
-                            );
+                            let ref_reachable =
+                                compute_left_reachable_direct(&ref_rule.alternatives, nullable_set);
                             for ref_name in ref_reachable {
                                 if reachable.insert(ref_name) {
                                     changed = true;
@@ -490,9 +485,12 @@ fn compute_left_reachable(
                         // Character classes block
                         break;
                     }
-                    BaseFactor::Group { alternatives: group_alts } => {
+                    BaseFactor::Group {
+                        alternatives: group_alts,
+                    } => {
                         // Inline group analysis
-                        let group_reachable = compute_left_reachable_direct(group_alts, nullable_set);
+                        let group_reachable =
+                            compute_left_reachable_direct(group_alts, nullable_set);
                         for name in group_reachable {
                             if reachable.insert(name) {
                                 changed = true;
@@ -508,7 +506,9 @@ fn compute_left_reachable(
 
                 // Check if factor is nullable via repetition
                 match factor.repetition {
-                    Repetition::ZeroOrMore | Repetition::Optional | Repetition::SeparatedZeroOrMore(_) => {
+                    Repetition::ZeroOrMore
+                    | Repetition::Optional
+                    | Repetition::SeparatedZeroOrMore(_) => {
                         // Nullable, continue to next factor
                         continue;
                     }
@@ -550,7 +550,9 @@ fn compute_left_reachable_direct(
                 BaseFactor::CharClass { .. } => {
                     break;
                 }
-                BaseFactor::Group { alternatives: group_alts } => {
+                BaseFactor::Group {
+                    alternatives: group_alts,
+                } => {
                     // Recursively get group's reachable (bounded depth)
                     let group_reachable = compute_left_reachable_direct(group_alts, nullable_set);
                     reachable.extend(group_reachable);
@@ -563,7 +565,9 @@ fn compute_left_reachable_direct(
 
             // Check repetition
             match factor.repetition {
-                Repetition::ZeroOrMore | Repetition::Optional | Repetition::SeparatedZeroOrMore(_) => {
+                Repetition::ZeroOrMore
+                | Repetition::Optional
+                | Repetition::SeparatedZeroOrMore(_) => {
                     continue;
                 }
                 _ => {
@@ -579,7 +583,9 @@ fn compute_left_reachable_direct(
 /// Check if alternatives are nullable (any alternative is nullable)
 fn is_alternatives_nullable(alternatives: &Alternatives, nullable_set: &HashSet<String>) -> bool {
     alternatives.alts.iter().any(|alt| {
-        alt.factors.iter().all(|f| is_factor_nullable_simple(f, nullable_set))
+        alt.factors
+            .iter()
+            .all(|f| is_factor_nullable_simple(f, nullable_set))
     })
 }
 
@@ -659,17 +665,21 @@ fn is_factor_nullable_simple(factor: &Factor, nullable_rules: &HashSet<String>) 
                     for seq_factor in &alt.factors {
                         // Simple inline check for this factor
                         let factor_nullable = match seq_factor.repetition {
-                            Repetition::ZeroOrMore | Repetition::Optional | Repetition::SeparatedZeroOrMore(_) => true,
+                            Repetition::ZeroOrMore
+                            | Repetition::Optional
+                            | Repetition::SeparatedZeroOrMore(_) => true,
                             _ => match &seq_factor.base {
                                 BaseFactor::Literal { value, .. } => value.is_empty(),
                                 BaseFactor::CharClass { .. } => false,
-                                BaseFactor::Nonterminal { name, .. } => nullable_rules.contains(name),
+                                BaseFactor::Nonterminal { name, .. } => {
+                                    nullable_rules.contains(name)
+                                }
                                 BaseFactor::Group { .. } => {
                                     // Nested group - limit depth by assuming not nullable
                                     // This avoids infinite recursion on deeply nested groups
                                     false
                                 }
-                            }
+                            },
                         };
 
                         if !factor_nullable {
@@ -801,7 +811,13 @@ fn is_factor_nullable_with_cache(
             local_visited.insert(name.clone());
 
             let result = if let Some(rule) = rule_map.get(name.as_str()) {
-                is_nullable_with_cache(&rule.alternatives, rule_map, &local_visited, cache, depth + 1)
+                is_nullable_with_cache(
+                    &rule.alternatives,
+                    rule_map,
+                    &local_visited,
+                    cache,
+                    depth + 1,
+                )
             } else {
                 false
             };
@@ -904,7 +920,9 @@ fn is_factor_nullable(
                 false
             }
         }
-        BaseFactor::Group { alternatives } => is_nullable(alternatives, rule_map, visited, depth + 1),
+        BaseFactor::Group { alternatives } => {
+            is_nullable(alternatives, rule_map, visited, depth + 1)
+        }
     }
 }
 
@@ -971,9 +989,13 @@ fn check_factor_for_recursion(
             }
             is_recursive(name, rule_map, visited, depth + 1)
         }
-        BaseFactor::Group { alternatives } => {
-            check_alternatives_for_recursion(alternatives, target_rule, rule_map, visited, depth + 1)
-        }
+        BaseFactor::Group { alternatives } => check_alternatives_for_recursion(
+            alternatives,
+            target_rule,
+            rule_map,
+            visited,
+            depth + 1,
+        ),
         _ => false,
     }
 }
@@ -1014,11 +1036,8 @@ fn calculate_complexity(alternatives: &Alternatives) -> usize {
 /// Normalize a grammar for static analysis purposes
 /// Returns a new grammar with hidden/promoted rules inlined
 fn normalize_grammar(grammar: &IxmlGrammar) -> IxmlGrammar {
-    let rule_map: HashMap<String, &Rule> = grammar
-        .rules
-        .iter()
-        .map(|r| (r.name.clone(), r))
-        .collect();
+    let rule_map: HashMap<String, &Rule> =
+        grammar.rules.iter().map(|r| (r.name.clone(), r)).collect();
 
     // Find rules that should be inlined (hidden and promoted)
     let mut inline_rules: HashSet<String> = HashSet::new();
@@ -1039,13 +1058,10 @@ fn normalize_grammar(grammar: &IxmlGrammar) -> IxmlGrammar {
         }
 
         // Normalize the alternatives
-        let normalized_alts = normalize_alternatives(&rule.alternatives, &rule_map, &inline_rules, 0);
+        let normalized_alts =
+            normalize_alternatives(&rule.alternatives, &rule_map, &inline_rules, 0);
 
-        normalized_rules.push(Rule::new(
-            rule.name.clone(),
-            rule.mark,
-            normalized_alts,
-        ));
+        normalized_rules.push(Rule::new(rule.name.clone(), rule.mark, normalized_alts));
     }
 
     IxmlGrammar::new(normalized_rules)
@@ -1109,10 +1125,7 @@ fn normalize_sequence(
         }
     }
 
-    result_sequences
-        .into_iter()
-        .map(Sequence::new)
-        .collect()
+    result_sequences.into_iter().map(Sequence::new).collect()
 }
 
 /// Normalize a factor, potentially expanding to multiple factors
@@ -1163,7 +1176,8 @@ fn normalize_factor(
         }
         BaseFactor::Group { alternatives } => {
             // Normalize the group's alternatives
-            let normalized_alts = normalize_alternatives(alternatives, rule_map, inline_rules, depth + 1);
+            let normalized_alts =
+                normalize_alternatives(alternatives, rule_map, inline_rules, depth + 1);
             vec![Factor::new(
                 BaseFactor::Group {
                     alternatives: Box::new(normalized_alts),
@@ -1204,9 +1218,9 @@ mod tests {
             Rule::new(
                 "term".to_string(),
                 Mark::None,
-                Alternatives::single(Sequence::new(vec![Factor::simple(
-                    BaseFactor::literal("x".to_string()),
-                )])),
+                Alternatives::single(Sequence::new(vec![Factor::simple(BaseFactor::literal(
+                    "x".to_string(),
+                ))])),
             ),
         ]);
 
@@ -1231,9 +1245,9 @@ mod tests {
             Rule::new(
                 "digit".to_string(),
                 Mark::None,
-                Alternatives::single(Sequence::new(vec![Factor::simple(
-                    BaseFactor::charclass("\"0\"-\"9\"".to_string()),
-                )])),
+                Alternatives::single(Sequence::new(vec![Factor::simple(BaseFactor::charclass(
+                    "\"0\"-\"9\"".to_string(),
+                ))])),
             ),
         ]);
 

@@ -14,21 +14,16 @@
 //!
 //! Reference: https://homepages.cwi.nl/~steven/Talks/2016/02-12-prague/data.html
 
-use crate::ast::{
-    Alternatives, BaseFactor, Factor, IxmlGrammar, Mark, Rule, Sequence,
-};
 #[cfg(test)]
 use crate::ast::Repetition;
+use crate::ast::{Alternatives, BaseFactor, Factor, IxmlGrammar, Mark, Rule, Sequence};
 use std::collections::{HashMap, HashSet};
 
 /// Normalize an iXML grammar by inlining non-recursive rules
 pub fn normalize_grammar(grammar: &IxmlGrammar) -> IxmlGrammar {
     // Step 1: Build a map of rule names to rules for quick lookup
-    let rule_map: HashMap<String, &Rule> = grammar
-        .rules
-        .iter()
-        .map(|r| (r.name.clone(), r))
-        .collect();
+    let rule_map: HashMap<String, &Rule> =
+        grammar.rules.iter().map(|r| (r.name.clone(), r)).collect();
 
     // Step 2: Detect which rules are recursive
     let recursive_rules = find_recursive_rules(grammar, &rule_map);
@@ -43,7 +38,11 @@ pub fn normalize_grammar(grammar: &IxmlGrammar) -> IxmlGrammar {
     let mut normalized_rules = Vec::new();
     for rule in &grammar.rules {
         let mut normalized_rule = rule.clone();
-        inline_in_alternatives(&mut normalized_rule.alternatives, &rule_map, &recursive_rules);
+        inline_in_alternatives(
+            &mut normalized_rule.alternatives,
+            &rule_map,
+            &recursive_rules,
+        );
         normalized_rules.push(normalized_rule);
     }
 
@@ -51,10 +50,8 @@ pub fn normalize_grammar(grammar: &IxmlGrammar) -> IxmlGrammar {
     // (The start rule is typically the first rule)
     let start_rule_name = grammar.rules.first().map(|r| r.name.clone());
 
-    normalized_rules.retain(|r| {
-        recursive_rules.contains(&r.name)
-            || start_rule_name.as_ref() == Some(&r.name)
-    });
+    normalized_rules
+        .retain(|r| recursive_rules.contains(&r.name) || start_rule_name.as_ref() == Some(&r.name));
 
     println!(
         "[normalize] Reduced from {} rules to {} rules",
@@ -196,9 +193,9 @@ fn inline_in_sequence(
 
 /// Result of inlining a factor
 enum InlineResult {
-    Keep(Factor),          // Keep the factor as-is
+    Keep(Factor), // Keep the factor as-is
     #[allow(dead_code)]
-    Replace(Vec<Factor>),  // Replace with multiple factors (reserved for future use)
+    Replace(Vec<Factor>), // Replace with multiple factors (reserved for future use)
 }
 
 /// Inline a factor if it's a non-recursive nonterminal
@@ -290,25 +287,21 @@ mod tests {
                         Factor::simple(BaseFactor::literal("+".to_string())),
                         Factor::simple(BaseFactor::nonterminal("term".to_string())),
                     ]),
-                    Sequence::new(vec![
-                        Factor::simple(BaseFactor::nonterminal("term".to_string())),
-                    ]),
+                    Sequence::new(vec![Factor::simple(BaseFactor::nonterminal(
+                        "term".to_string(),
+                    ))]),
                 ]),
             ),
             Rule::new(
                 "term".to_string(),
                 Mark::None,
-                Alternatives::single(Sequence::new(vec![
-                    Factor::simple(BaseFactor::literal("x".to_string())),
-                ])),
+                Alternatives::single(Sequence::new(vec![Factor::simple(BaseFactor::literal(
+                    "x".to_string(),
+                ))])),
             ),
         ]);
 
-        let rule_map: HashMap<_, _> = grammar
-            .rules
-            .iter()
-            .map(|r| (r.name.clone(), r))
-            .collect();
+        let rule_map: HashMap<_, _> = grammar.rules.iter().map(|r| (r.name.clone(), r)).collect();
         let recursive = find_recursive_rules(&grammar, &rule_map);
 
         assert!(recursive.contains("expr"));
@@ -322,31 +315,27 @@ mod tests {
             Rule::new(
                 "a".to_string(),
                 Mark::None,
-                Alternatives::single(Sequence::new(vec![
-                    Factor::simple(BaseFactor::nonterminal("b".to_string())),
-                ])),
+                Alternatives::single(Sequence::new(vec![Factor::simple(
+                    BaseFactor::nonterminal("b".to_string()),
+                )])),
             ),
             Rule::new(
                 "b".to_string(),
                 Mark::None,
-                Alternatives::single(Sequence::new(vec![
-                    Factor::simple(BaseFactor::nonterminal("c".to_string())),
-                ])),
+                Alternatives::single(Sequence::new(vec![Factor::simple(
+                    BaseFactor::nonterminal("c".to_string()),
+                )])),
             ),
             Rule::new(
                 "c".to_string(),
                 Mark::None,
-                Alternatives::single(Sequence::new(vec![
-                    Factor::simple(BaseFactor::nonterminal("a".to_string())),
-                ])),
+                Alternatives::single(Sequence::new(vec![Factor::simple(
+                    BaseFactor::nonterminal("a".to_string()),
+                )])),
             ),
         ]);
 
-        let rule_map: HashMap<_, _> = grammar
-            .rules
-            .iter()
-            .map(|r| (r.name.clone(), r))
-            .collect();
+        let rule_map: HashMap<_, _> = grammar.rules.iter().map(|r| (r.name.clone(), r)).collect();
         let recursive = find_recursive_rules(&grammar, &rule_map);
 
         // All three rules are mutually recursive
@@ -371,9 +360,9 @@ mod tests {
             Rule::new(
                 "digit".to_string(),
                 Mark::None,
-                Alternatives::single(Sequence::new(vec![Factor::simple(
-                    BaseFactor::charclass("\"0\"-\"9\"".to_string()),
-                )])),
+                Alternatives::single(Sequence::new(vec![Factor::simple(BaseFactor::charclass(
+                    "\"0\"-\"9\"".to_string(),
+                ))])),
             ),
         ]);
 
