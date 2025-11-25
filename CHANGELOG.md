@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-11-25
+
 ### Added
 
 #### Left-Recursion Support
@@ -211,7 +213,7 @@ First public release of rustixml - a pure Rust implementation of Invisible XML.
 
 ## Version History Summary
 
-- **Unreleased**: Seed-growing left-recursion + Grammar normalization + Static ambiguity detection + 76.9% conformance
+- **0.3.0** (2025-11-25): Seed-growing left-recursion + Grammar normalization + Static ambiguity detection + Clippy fixes + 76.9% conformance
 - **0.2.0** (2024-11-20): WebAssembly support + WASMZ pattern + 83.7% conformance
 - **0.1.0** (2024-10-15): Initial release with core parser + 70% conformance
 

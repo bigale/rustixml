@@ -1,9 +1,9 @@
 [package]
 name = "rustixml"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Alex Everitt <bigale@netzero.net>"]
-description = "Native iXML (Invisible XML) parser - 83.7% spec conformance, works in Rust and WebAssembly"
+description = "Native iXML (Invisible XML) parser with left-recursion support - 76.9% spec conformance, works in Rust and WebAssembly"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/bigale/rustixml"
 homepage = "https://github.com/bigale/rustixml"
