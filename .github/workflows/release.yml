@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -13,7 +16,6 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Checkout code
@@ -36,16 +38,12 @@ jobs:
           cat release_notes.md
 
       - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release v${{ steps.get_version.outputs.version }}
           body_path: release_notes.md
           draft: false
           prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   build-release:
     name: Build Release Binaries
@@ -119,15 +117,11 @@ jobs:
             conformance_test${{ matrix.binary_ext }} `
             rustixml${{ matrix.binary_ext }}
 
-      - name: Upload release asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./rustixml-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}
-          asset_name: rustixml-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}
-          asset_content_type: ${{ matrix.archive_ext == 'tar.gz' && 'application/gzip' || 'application/zip' }}
+          files: rustixml-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   publish-crate:
     name: Publish to crates.io
