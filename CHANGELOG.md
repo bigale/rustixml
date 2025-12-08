@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-12-08
+
+### Added
+- **Internet Computer (IC) Canister Support**: New `ic-canister` feature flag for deploying to IC blockchain
+  - Disables `wasm-bindgen` dependencies when targeting IC canisters
+  - Maintains browser/Node.js WASM support when feature is not enabled
+- **UTF-8 BOM Handling**: Parser automatically strips UTF-8 BOM (U+FEFF) from input if present
+
+### Changed
+- **WASM Bindings**: Made conditional on `#[cfg(all(target_arch = "wasm32", not(feature = "ic-canister")))]`
+  - `src/lib.rs`: Conditional module declaration and re-exports
+  - `src/wasm.rs`: Conditional compilation for browser/Node.js only
+- **Cargo.toml**: `wasm-bindgen` dependencies now conditional on `not(feature = "ic-canister")`
+
+### Fixed
+- Resolved IC canister deployment error: "Module imports function '__wbindgen_object_drop_ref' from '__wbindgen_placeholder__'"
+  - Caused by `wasm-bindgen` being incompatible with IC's WASM runtime
+  - Fixed by making browser-specific bindings conditional
+
 ## [0.3.0] - 2025-11-25
 
 ### Added
