@@ -41,6 +41,7 @@ impl XmlNode {
 
     fn escape_xml_text(s: &str) -> String {
         // In text content, we must escape: &, <
+        // Note: > can optionally be escaped but is not required by XML spec
         s.replace('&', "&amp;").replace('<', "&lt;")
     }
 

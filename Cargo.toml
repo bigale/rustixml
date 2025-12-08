@@ -26,8 +26,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 unicode-general-category = "1.0"
 
-# WASM-specific dependencies (only when building for wasm32)
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+# WASM-specific dependencies (only when building for wasm32 AND NOT IC canister)
+[target.'cfg(all(target_arch = "wasm32", not(feature = "ic-canister")))'.dependencies]
 wasm-bindgen = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
@@ -39,6 +39,7 @@ wasm-bindgen-test = "0.3"
 
 [features]
 default = []
+ic-canister = []  # Disable wasm-bindgen for IC canister builds
 console_error_panic_hook = ["dep:console_error_panic_hook"]
 wee_alloc = ["dep:wee_alloc"]
 

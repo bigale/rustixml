@@ -41,8 +41,8 @@ pub mod normalize;
 pub mod parse_context;
 pub mod xml_node;
 
-// WASM bindings (only when compiling for wasm32)
-#[cfg(target_arch = "wasm32")]
+// WASM bindings (only when compiling for wasm32 browser/Node.js, not IC canisters)
+#[cfg(all(target_arch = "wasm32", not(feature = "ic-canister")))]
 pub mod wasm;
 
 // Re-export main API
@@ -51,6 +51,6 @@ pub use grammar_ast::parse_ixml_grammar;
 pub use native_parser::NativeParser;
 pub use parse_context::{ParseContext, ParseError, ParseResult};
 
-// Re-export WASM API for convenience
-#[cfg(target_arch = "wasm32")]
+// Re-export WASM API for convenience (only for browser/Node.js WASM, not IC canisters)
+#[cfg(all(target_arch = "wasm32", not(feature = "ic-canister")))]
 pub use wasm::*;

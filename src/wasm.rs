@@ -1,9 +1,9 @@
 //! WebAssembly bindings for rustixml
 //!
 //! This module provides JavaScript-friendly bindings for the iXML parser.
-//! It's only compiled when targeting wasm32.
+//! It's only compiled when targeting wasm32 (browser/Node.js), not IC canisters.
 
-#![cfg(target_arch = "wasm32")]
+#![cfg(all(target_arch = "wasm32", not(feature = "ic-canister")))]
 
 use crate::{parse_ixml_grammar, NativeParser};
 use wasm_bindgen::prelude::*;
