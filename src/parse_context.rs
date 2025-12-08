@@ -22,6 +22,25 @@ pub struct ParseContext {
     /// Memoization cache: (rule_name, position) -> Result<ParseResult, ParseError>
     /// Stores the result of parsing a rule at a specific position to avoid re-parsing
     pub memo_cache: HashMap<(String, usize), Result<ParseResult, ParseError>>,
+
+    /// Instruction budget for IC canister execution (None = unlimited)
+    /// Only used when compiled for IC with ic-canister feature
+    #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+    pub instruction_budget: Option<u64>,
+
+    /// Starting instruction counter value
+    /// Only used when compiled for IC with ic-canister feature
+    #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+    pub instruction_start: u64,
+
+    /// Check interval for instruction limit (check every N operations)
+    /// Default: 100 (balance between overhead and responsiveness)
+    #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+    pub check_counter: usize,
+
+    /// Check frequency (operations between checks)
+    #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+    pub check_interval: usize,
 }
 
 impl ParseContext {
@@ -32,6 +51,14 @@ impl ParseContext {
             depth: 0,
             left_recursion: HashSet::new(),
             memo_cache: HashMap::new(),
+            #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+            instruction_budget: None,
+            #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+            instruction_start: 0,
+            #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+            check_counter: 0,
+            #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+            check_interval: 100, // Check every 100 parse operations
         }
     }
 
@@ -55,6 +82,69 @@ impl ParseContext {
         self.depth = self.depth.saturating_sub(1);
         let key = (rule_name.to_string(), position);
         self.left_recursion.remove(&key);
+    }
+
+    /// Set instruction budget for IC canister execution
+    ///
+    /// # Arguments
+    /// * `budget` - Maximum instructions allowed (None = unlimited)
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mut ctx = ParseContext::new();
+    /// ctx.set_instruction_budget(Some(30_000_000_000)); // 30B instructions (75% of IC limit)
+    /// ```
+    #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+    pub fn set_instruction_budget(&mut self, budget: Option<u64>) {
+        self.instruction_budget = budget;
+        if budget.is_some() {
+            // Record starting instruction count when budget is set
+            self.instruction_start = ic_cdk::api::performance_counter(0);
+        }
+    }
+
+    /// Check if instruction budget has been exceeded
+    ///
+    /// This is called periodically during parsing (every N operations as configured
+    /// by check_interval). Returns Ok(()) if budget not exceeded, or error if exceeded.
+    ///
+    /// # Returns
+    /// * `Ok(())` - Budget not exceeded, parsing can continue
+    /// * `Err(ParseError::InstructionLimitExceeded)` - Budget exceeded, abort parsing
+    #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+    pub fn check_instruction_limit(&mut self) -> Result<(), ParseError> {
+        // Increment counter
+        self.check_counter += 1;
+
+        // Only check periodically to minimize overhead
+        if self.check_counter < self.check_interval {
+            return Ok(());
+        }
+
+        // Reset counter
+        self.check_counter = 0;
+
+        // Check budget if set
+        if let Some(budget) = self.instruction_budget {
+            let current = ic_cdk::api::performance_counter(0);
+            let consumed = current - self.instruction_start;
+
+            if consumed > budget {
+                return Err(ParseError::InstructionLimitExceeded {
+                    consumed,
+                    budget,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    /// No-op instruction check for non-IC targets
+    /// This allows calling check_instruction_limit() unconditionally in parser code
+    #[cfg(not(all(target_arch = "wasm32", feature = "ic-canister")))]
+    pub fn check_instruction_limit(&mut self) -> Result<(), ParseError> {
+        Ok(())
     }
 }
 
@@ -139,6 +229,9 @@ pub enum ParseError {
     /// Direct left recursion detected
     LeftRecursion { rule: String, position: usize },
 
+    /// Instruction budget exceeded (IC canister execution limit)
+    InstructionLimitExceeded { consumed: u64, budget: u64 },
+
     /// Custom error message
     Custom { message: String, position: usize },
 }
@@ -153,6 +246,7 @@ impl ParseError {
             ParseError::NoAlternativeMatched { position, .. } => *position,
             ParseError::UndefinedRule { position, .. } => *position,
             ParseError::LeftRecursion { position, .. } => *position,
+            ParseError::InstructionLimitExceeded { .. } => 0, // No specific position
             ParseError::Custom { position, .. } => *position,
         }
     }
@@ -211,6 +305,19 @@ impl ParseError {
                     line, col, rule
                 )
             }
+            ParseError::InstructionLimitExceeded { consumed, budget } => {
+                format!(
+                    "Parse error: Instruction budget exceeded ({} / {} instructions, {:.1}% over limit)\n\
+                     This typically indicates:\n\
+                     - Ambiguous grammar causing excessive backtracking\n\
+                     - Malformed input triggering all grammar alternatives\n\
+                     - Complex recursive structures\n\
+                     Consider simplifying the grammar or validating input earlier.",
+                    consumed,
+                    budget,
+                    ((*consumed as f64 / *budget as f64) - 1.0) * 100.0
+                )
+            }
             ParseError::Custom { message, .. } => {
                 format!(
                     "Parse error at line {}, column {}: {}\nContext: ...{}...",
@@ -253,6 +360,15 @@ impl std::fmt::Display for ParseError {
             }
             ParseError::LeftRecursion { rule, .. } => {
                 write!(f, "Left recursion in rule '{}'", rule)
+            }
+            ParseError::InstructionLimitExceeded { consumed, budget } => {
+                write!(
+                    f,
+                    "Instruction budget exceeded: {} / {} instructions ({:.1}% over)",
+                    consumed,
+                    budget,
+                    ((*consumed as f64 / *budget as f64) - 1.0) * 100.0
+                )
             }
             ParseError::Custom { message, .. } => write!(f, "{}", message),
         }

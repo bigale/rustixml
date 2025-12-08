@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2025-12-08
+
+### Added
+- **Runtime Instruction Budget Checking**: Prevent IC canister instruction limit exhaustion
+  - New `parse_with_budget()` method for IC canister deployments
+  - Periodic instruction checking (every 100 operations) in critical parser loops
+  - Configurable instruction budget with automatic abort before hitting IC's 40B limit
+  - Strategic checks in: alternative selection, seed-growing iterations, repetition loops
+  - Helpful error messages showing consumed vs budget instructions with diagnostic guidance
+  - Zero overhead for non-IC targets (conditional compilation)
+  - Complements existing static ambiguity detection with runtime DoS protection
+
+### Changed
+- **ParseContext**: Added instruction budget tracking fields (IC-only via feature flag)
+- **ParseError**: Added `InstructionLimitExceeded` variant with consumed/budget details
+- **NativeParser**: Refactored `parse()` to use shared `parse_internal()` method
+
+### Performance
+- Estimated overhead: ~1-2% for IC canister deployments (periodic checking)
+- Check interval: 100 operations (configurable)
+- Default budget: None (unlimited, caller must set explicit budget)
+
+### Use Case
+```rust
+// IC Canister deployment example
+let parser = NativeParser::new(grammar_ast);
+// Set budget to 75% of IC's 40B limit (conservative)
+let result = parser.parse_with_budget(edi_content, Some(30_000_000_000));
+```
+
+### Defense Against
+- Ambiguous grammars causing excessive backtracking
+- Malformed input triggering exponential parse attempts
+- Deep recursive structures consuming excessive instructions
+- DoS attacks via crafted input
+
 ## [0.3.1] - 2025-12-08
 
 ### Added

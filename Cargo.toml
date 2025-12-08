@@ -1,6 +1,6 @@
 [package]
 name = "rustixml"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = ["Alex Everitt <bigale@netzero.net>"]
 description = "Native iXML (Invisible XML) parser with left-recursion support - 76.9% spec conformance, works in Rust and WebAssembly"
@@ -25,6 +25,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 unicode-general-category = "1.0"
+ic-cdk = { version = "0.16", optional = true }
 
 # WASM-specific dependencies (only when building for wasm32 AND NOT IC canister)
 [target.'cfg(all(target_arch = "wasm32", not(feature = "ic-canister")))'.dependencies]
@@ -39,7 +40,7 @@ wasm-bindgen-test = "0.3"
 
 [features]
 default = []
-ic-canister = []  # Disable wasm-bindgen for IC canister builds
+ic-canister = ["dep:ic-cdk"]  # Enable IC canister support with ic-cdk
 console_error_panic_hook = ["dep:console_error_panic_hook"]
 wee_alloc = ["dep:wee_alloc"]
 

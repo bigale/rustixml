@@ -49,6 +49,38 @@ impl NativeParser {
         self.rules.len()
     }
 
+    /// Parse input text with an instruction budget (IC canister execution limit)
+    ///
+    /// This method allows setting a maximum number of instructions that can be consumed
+    /// during parsing. If the budget is exceeded, parsing aborts with an error.
+    ///
+    /// # Arguments
+    /// * `input` - Input text to parse
+    /// * `instruction_budget` - Maximum instructions allowed (None = unlimited)
+    ///
+    /// # Returns
+    /// * `Ok(String)` - XML string on successful parse
+    /// * `Err(String)` - Error message if parse fails or budget exceeded
+    ///
+    /// # Example (IC Canister)
+    /// ```ignore
+    /// let parser = NativeParser::new(grammar_ast);
+    /// // Set budget to 75% of IC's 40B limit (conservative)
+    /// let result = parser.parse_with_budget(edi_content, Some(30_000_000_000));
+    /// ```
+    #[cfg(all(target_arch = "wasm32", feature = "ic-canister"))]
+    pub fn parse_with_budget(
+        &self,
+        input: &str,
+        instruction_budget: Option<u64>,
+    ) -> Result<String, String> {
+        let mut stream = InputStream::new(input);
+        let mut ctx = ParseContext::new();
+        ctx.set_instruction_budget(instruction_budget);
+
+        self.parse_internal(&mut stream, &mut ctx, input)
+    }
+
     /// Parse input text according to the grammar
     ///
     /// Returns XML string on success, or error message on failure
@@ -56,6 +88,16 @@ impl NativeParser {
         let mut stream = InputStream::new(input);
         let mut ctx = ParseContext::new();
 
+        self.parse_internal(&mut stream, &mut ctx, input)
+    }
+
+    /// Internal parse implementation (shared by parse() and parse_with_budget())
+    fn parse_internal(
+        &self,
+        stream: &mut InputStream,
+        ctx: &mut ParseContext,
+        input: &str,
+    ) -> Result<String, String> {
         // Start with the first rule in the grammar
         let start_rule = self
             .grammar
@@ -63,7 +105,7 @@ impl NativeParser {
             .first()
             .ok_or_else(|| "Grammar has no rules".to_string())?;
 
-        match self.parse_rule(&mut stream, start_rule, &mut ctx) {
+        match self.parse_rule(stream, start_rule, ctx) {
             Ok(result) => {
                 // Check if all input was consumed
                 if !stream.is_eof() {
@@ -154,6 +196,9 @@ impl NativeParser {
         let mut iteration = 0;
 
         loop {
+            // Check instruction limit during seed-growing (prevent DoS via deep recursion)
+            ctx.check_instruction_limit()?;
+
             iteration += 1;
             if iteration > MAX_ITERATIONS {
                 // Safety limit reached - return current seed
@@ -294,6 +339,9 @@ impl NativeParser {
 
         // Try each alternative and keep the longest match
         for alt in alts.alts.iter() {
+            // Check instruction limit before each alternative (prevent DoS via ambiguity)
+            ctx.check_instruction_limit()?;
+
             stream.set_position(start_pos); // Reset for each alternative
             attempts += 1;
 
@@ -712,6 +760,9 @@ impl NativeParser {
 
         // Keep matching until we fail
         loop {
+            // Check instruction limit during repetition (prevent DoS via * or + loops)
+            ctx.check_instruction_limit()?;
+
             let loop_start = stream.position();
 
             // Try to match the base factor
